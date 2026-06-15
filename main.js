@@ -32,6 +32,39 @@ var DEFAULT_SETTINGS = {
   conditionSectionHeader: "\uCEE8\uB514\uC158"
 };
 var TRACKER_VIEW_TYPE = "daily-condition-tracker";
+var ACTIVITY_KW = ["\uC6B4\uB3D9", "\uD5EC\uC2A4", "\uC870\uAE45", "\uB2EC\uB9AC\uAE30", "\uC218\uC601", "\uC790\uC804\uAC70", "\uC694\uAC00", "\uC0B0\uCC45", "\uB4F1\uC0B0", "\uD544\uB77C\uD14C\uC2A4", "\uC2A4\uD2B8\uB808\uCE6D", "\uD648\uD2B8", "gym", "workout"];
+var OUTDOOR_KW = ["\uC0B0\uCC45", "\uB4F1\uC0B0", "\uC57C\uC678", "\uC678\uCD9C", "\uACF5\uC6D0", "\uC790\uC5F0"];
+var SOCIAL_KW = ["\uCE5C\uAD6C", "\uC57D\uC18D", "\uB9CC\uB0A8", "\uB300\uD654", "\uBAA8\uC784", "\uD568\uAED8", "\uAC19\uC774", "\uCEE4\uD53C"];
+var STRESS_KW = ["\uC2A4\uD2B8\uB808\uC2A4", "\uBC14\uBE74", "\uB9C8\uAC10", "\uC57C\uADFC", "\uD68C\uC758", "\uBBF8\uD305", "\uD798\uB4E4\uC5C8", "\uC9C0\uCCE4", "\uD53C\uACE4\uD588"];
+var MEAL_KW = ["\uC544\uCE68", "\uC810\uC2EC", "\uC800\uB141", "\uC2DD\uC0AC", "\uBC25\uBA39", "\uBC25\uC744 \uBA39", "\uBA39\uC5C8\uB2E4"];
+var PRODUCTIVE_KW = ["\uC644\uB8CC", "\uB05D\uB0C8", "\uC791\uC5C5", "\uACF5\uBD80", "\uC9D1\uC911", "\uC0DD\uC0B0", "\uC131\uCDE8", "\uB2EC\uC131"];
+var NoteFeatureExtractor = class {
+  static extract(text) {
+    const t = text;
+    let sleepHours;
+    const sleepPats = [
+      /([0-9]+(?:\.[05])?)\s*시간\s*(?:수면|잠|잤|자고|취침)/,
+      /(?:수면|취침)\s*([0-9]+(?:\.[05])?)\s*시간/,
+      /잠을?\s*([0-9]+(?:\.[05])?)\s*시간/
+    ];
+    for (const p of sleepPats) {
+      const m = t.match(p);
+      if (m) {
+        sleepHours = parseFloat(m[1]);
+        break;
+      }
+    }
+    return {
+      sleepHours,
+      activities: ACTIVITY_KW.filter((kw) => t.includes(kw)),
+      hasOutdoor: OUTDOOR_KW.some((kw) => t.includes(kw)),
+      hasSocial: SOCIAL_KW.some((kw) => t.includes(kw)),
+      stressCount: STRESS_KW.filter((kw) => t.includes(kw)).length,
+      hasMeal: MEAL_KW.some((kw) => t.includes(kw)),
+      productiveKw: PRODUCTIVE_KW.filter((kw) => t.includes(kw))
+    };
+  }
+};
 var POS2 = ["\uCD5C\uACE0\uB2E4", "\uC644\uBCBD\uD558", "\uB108\uBB34\uC88B", "\uC5C4\uCCAD\uC88B", "\uAE30\uBD84\uCD5C\uACE0", "\uCEE8\uB514\uC158\uCD5C\uACE0", "\uCD5C\uC0C1\uC774"];
 var POS1 = [
   "\uC88B\uB2E4",
@@ -514,9 +547,12 @@ var TrackerView = class extends import_obsidian.ItemView {
         var _a;
         return s + ((_a = d.conditionScore) != null ? _a : 0);
       }, 0) / off.length : 0;
+      const diff = on.length > 0 && off.length > 0 ? onAvg - offAvg : 0;
+      const pct = offAvg > 0.5 ? Math.round(diff / offAvg * 100) : Math.round(diff * 10);
       stats.push({
         label,
-        diff: on.length > 0 && off.length > 0 ? onAvg - offAvg : 0,
+        diff,
+        pct,
         checkedAvg: onAvg,
         uncheckedAvg: offAvg,
         checkRate: withItem.length > 0 ? on.length / withItem.length : 0,
@@ -535,12 +571,12 @@ var TrackerView = class extends import_obsidian.ItemView {
     }
     container.createEl("h4", { text: "\uD56D\uBAA9\uBCC4 \uCEE8\uB514\uC158 \uC601\uD5A5\uB3C4", cls: "ct-impact-title" });
     const tiers = [
-      { key: "critical", label: "\uD575\uC2EC \uC2B5\uAD00", sub: "\uC5C6\uC73C\uBA74 \uCEE8\uB514\uC158\uC774 \uD06C\uAC8C \uB5A8\uC5B4\uC838\uC694", items: stats.filter((s) => s.diff >= 1.5) },
-      { key: "good", label: "\uB3C4\uC6C0\uC774 \uB418\uB294 \uC2B5\uAD00", sub: "\uC788\uC744 \uB54C \uB354 \uC88B\uC544\uC694", items: stats.filter((s) => s.diff >= 0.4 && s.diff < 1.5) },
+      { key: "critical", label: "\uD575\uC2EC \uC2B5\uAD00", sub: "\uC5C6\uC73C\uBA74 \uCEE8\uB514\uC158\uC774 \uD06C\uAC8C \uB2EC\uB77C\uC838\uC694", items: stats.filter((s) => s.diff >= 1.5) },
+      { key: "good", label: "\uB3C4\uC6C0\uC774 \uB418\uB294 \uC2B5\uAD00", sub: "\uC788\uC744 \uB54C \uB208\uC5D0 \uB744\uAC8C \uC88B\uC544\uC694", items: stats.filter((s) => s.diff >= 0.4 && s.diff < 1.5) },
       { key: "neutral", label: "\uC601\uD5A5 \uB0AE\uC74C", sub: "\uCEE8\uB514\uC158\uACFC \uC5F0\uAD00\uC774 \uC801\uC5B4\uC694", items: stats.filter((s) => Math.abs(s.diff) < 0.4) },
-      { key: "bad", label: "\uD53C\uD558\uBA74 \uC88B\uC740 \uAC83", sub: "\uCCB4\uD06C\uD560\uC218\uB85D \uCEE8\uB514\uC158\uC774 \uB0AE\uC544\uC694", items: stats.filter((s) => s.diff < -0.4) }
+      { key: "bad", label: "\uD53C\uD558\uBA74 \uC88B\uC740 \uAC83", sub: "\uC788\uC744 \uB54C \uC624\uD788\uB824 \uB0AE\uC544\uC9C0\uB294 \uACBD\uD5A5", items: stats.filter((s) => s.diff < -0.4) }
     ];
-    const maxDiff = Math.max(...stats.map((s) => Math.abs(s.diff)), 1);
+    const maxPct = Math.max(...stats.map((s) => Math.abs(s.pct)), 1);
     tiers.forEach((tier) => {
       if (tier.items.length === 0)
         return;
@@ -548,20 +584,22 @@ var TrackerView = class extends import_obsidian.ItemView {
       const hdr = sec.createDiv("ct-tier-hdr");
       hdr.createEl("span", { text: tier.label, cls: "ct-tier-name" });
       hdr.createEl("span", { text: tier.sub, cls: "ct-tier-sub" });
-      tier.items.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).forEach((item) => {
+      tier.items.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct)).forEach((item) => {
         const row = sec.createDiv("ct-impact-row");
         const left = row.createDiv("ct-impact-left");
         left.createEl("span", { text: item.label, cls: "ct-impact-name" });
         if (item.missed >= 3)
-          left.createEl("span", { text: `${item.missed}\uC77C \uC9F8 \uBBF8\uCCB4\uD06C`, cls: "ct-badge ct-badge--warn" });
+          left.createEl("span", { text: `${item.missed}\uC77C\uC9F8 \uBBF8\uCCB4\uD06C`, cls: "ct-badge ct-badge--warn" });
         else if (item.streak >= 3)
           left.createEl("span", { text: `${item.streak}\uC77C \uC5F0\uC18D`, cls: "ct-badge ct-badge--good" });
         const right = row.createDiv("ct-impact-right");
         const barWrap = right.createDiv("ct-impact-bar-track");
         const bar = barWrap.createDiv(`ct-impact-bar ${item.diff >= 0 ? "ct-impact-bar--pos" : "ct-impact-bar--neg"}`);
-        bar.style.width = `${Math.round(Math.abs(item.diff) / maxDiff * 100)}%`;
+        bar.style.width = `${Math.round(Math.abs(item.pct) / maxPct * 100)}%`;
         const meta = right.createDiv("ct-impact-meta");
-        meta.createEl("span", { cls: "ct-impact-diff", text: `${item.diff >= 0 ? "+" : ""}${item.diff.toFixed(1)}\uC810` });
+        const absPct = Math.abs(item.pct);
+        const pctLabel = item.diff >= 0 ? `\uCEE8\uB514\uC158 ${absPct}% \uB354 \uC88B\uC74C` : `\uCEE8\uB514\uC158 ${absPct}% \uB354 \uB0AE\uC74C`;
+        meta.createEl("span", { cls: `ct-impact-diff ${item.diff >= 0 ? "pos" : "neg"}`, text: pctLabel });
         meta.createEl("span", { cls: "ct-impact-rate", text: `\uCCB4\uD06C\uC728 ${Math.round(item.checkRate * 100)}%` });
       });
     });
@@ -569,64 +607,134 @@ var TrackerView = class extends import_obsidian.ItemView {
   renderStatInsights(container, data) {
     if (data.length < 5)
       return;
-    const stats = this.buildItemStats(data).filter((s) => s.hasEnoughData);
-    const scores = data.map((d) => {
+    const itemStats = this.buildItemStats(data).filter((s) => s.hasEnoughData);
+    const sortedItems = [...itemStats].sort((a, b) => b.diff - a.diff);
+    const withScore = [...data].filter((d) => {
+      var _a;
+      return ((_a = d.conditionScore) != null ? _a : 0) > 0;
+    }).sort((a, b) => a.date.localeCompare(b.date));
+    const recent3 = withScore.slice(-3).map((d) => {
       var _a;
       return (_a = d.conditionScore) != null ? _a : 0;
-    }).filter((s) => s > 0);
-    const mid = Math.floor(scores.length / 2);
-    const recentAvg = scores.slice(mid).reduce((s, v) => s + v, 0) / Math.max(scores.length - mid, 1);
-    const earlyAvg = scores.slice(0, mid).reduce((s, v) => s + v, 0) / Math.max(mid, 1);
-    const trend = recentAvg - earlyAvg;
-    const sorted = [...stats].sort((a, b) => b.diff - a.diff);
-    const lacking = sorted.filter((s) => s.diff > 0.5 && s.missed >= 2);
-    const goingWell = sorted.filter((s) => s.diff > 0.3 && (s.streak >= 3 || s.checkRate > 0.65));
-    const topItem = sorted[0];
+    });
+    const early3 = withScore.slice(0, 3).map((d) => {
+      var _a;
+      return (_a = d.conditionScore) != null ? _a : 0;
+    });
+    const recentAvg = recent3.length > 0 ? recent3.reduce((s, v) => s + v, 0) / recent3.length : 0;
+    const earlyAvg = early3.length > 0 ? early3.reduce((s, v) => s + v, 0) / early3.length : 0;
+    const trendPct = earlyAvg > 0 ? Math.round((recentAvg - earlyAvg) / earlyAvg * 100) : 0;
+    const allFeat = withScore.map((d) => {
+      var _a;
+      return { score: (_a = d.conditionScore) != null ? _a : 0, f: NoteFeatureExtractor.extract(d.freeText) };
+    });
+    const withSleep = allFeat.filter((x) => x.f.sleepHours !== void 0);
+    let sleepInsight = "";
+    if (withSleep.length >= 3) {
+      const enough = withSleep.filter((x) => {
+        var _a;
+        return ((_a = x.f.sleepHours) != null ? _a : 0) >= 7;
+      });
+      const lack = withSleep.filter((x) => {
+        var _a;
+        return ((_a = x.f.sleepHours) != null ? _a : 0) < 7;
+      });
+      if (enough.length >= 2 && lack.length >= 2) {
+        const eAvg = enough.reduce((s, x) => s + x.score, 0) / enough.length;
+        const lAvg = lack.reduce((s, x) => s + x.score, 0) / lack.length;
+        const pct = lAvg > 0 ? Math.round((eAvg - lAvg) / lAvg * 100) : 0;
+        if (Math.abs(pct) > 5)
+          sleepInsight = pct > 0 ? `7\uC2DC\uAC04 \uC774\uC0C1 \uC794 \uB0A0 \uCEE8\uB514\uC158\uC774 ${pct}% \uB354 \uC88B\uC558\uC5B4\uC694.` : `\uC218\uBA74 \uC2DC\uAC04\uBCF4\uB2E4 \uC218\uBA74 \uC9C8\uC744 \uC0B4\uD3B4\uBD10\uC694. \uAE34 \uC218\uBA74\uC774 \uC624\uD788\uB824 \uB0AE\uC740 \uACBD\uD5A5\uC774 \uC788\uC5B4\uC694.`;
+      }
+    }
+    const withAct = allFeat.filter((x) => x.f.activities.length > 0);
+    const noAct = allFeat.filter((x) => x.f.activities.length === 0);
+    let actInsight = "";
+    if (withAct.length >= 2 && noAct.length >= 2) {
+      const aAvg = withAct.reduce((s, x) => s + x.score, 0) / withAct.length;
+      const nAvg = noAct.reduce((s, x) => s + x.score, 0) / noAct.length;
+      const pct = nAvg > 0 ? Math.round((aAvg - nAvg) / nAvg * 100) : 0;
+      if (pct > 5) {
+        const acts = ACTIVITY_KW.filter((k) => withAct.some((x) => x.f.activities.includes(k))).slice(0, 2);
+        actInsight = `\uD65C\uB3D9(${acts.join(", ")})\uC774 \uC788\uB294 \uB0A0 \uCEE8\uB514\uC158\uC774 ${pct}% \uB354 \uB192\uC544\uC694.`;
+      }
+    }
+    const hiStress = allFeat.filter((x) => x.f.stressCount >= 2);
+    const loStress = allFeat.filter((x) => x.f.stressCount === 0);
+    let stressInsight = "";
+    if (hiStress.length >= 2 && loStress.length >= 2) {
+      const hAvg = hiStress.reduce((s, x) => s + x.score, 0) / hiStress.length;
+      const lAvg = loStress.reduce((s, x) => s + x.score, 0) / loStress.length;
+      const pct = hAvg > 0 ? Math.round((lAvg - hAvg) / hAvg * 100) : 0;
+      if (pct > 10)
+        stressInsight = `\uC2A4\uD2B8\uB808\uC2A4\uAC00 \uB9CE\uC740 \uB0A0 \uCEE8\uB514\uC158\uC774 ${pct}% \uB0AE\uC558\uC5B4\uC694. \uC5C5\uBB34 \uAC15\uB3C4 \uC870\uC808\uC774 \uB3C4\uC6C0\uC774 \uB420 \uC218 \uC788\uC5B4\uC694.`;
+    }
+    const withOut = allFeat.filter((x) => x.f.hasOutdoor);
+    const noOut = allFeat.filter((x) => !x.f.hasOutdoor);
+    let outdoorInsight = "";
+    if (withOut.length >= 2 && noOut.length >= 2) {
+      const oAvg = withOut.reduce((s, x) => s + x.score, 0) / withOut.length;
+      const iAvg = noOut.reduce((s, x) => s + x.score, 0) / noOut.length;
+      const pct = iAvg > 0 ? Math.round((oAvg - iAvg) / iAvg * 100) : 0;
+      if (pct > 5)
+        outdoorInsight = `\uC57C\uC678 \uD65C\uB3D9\uC774 \uC788\uB294 \uB0A0 \uCEE8\uB514\uC158\uC774 ${pct}% \uB354 \uC88B\uC558\uC5B4\uC694.`;
+    }
+    const lacking = sortedItems.filter((s) => s.diff > 0.5 && s.missed >= 2);
+    const goingWell = sortedItems.filter((s) => s.diff > 0.3 && (s.streak >= 3 || s.checkRate > 0.65));
+    const topItem = sortedItems[0];
+    const lowItems = itemStats.filter((s) => Math.abs(s.pct) < 15);
     const wrap = container.createDiv("ct-narrative-wrap");
     const c1 = wrap.createDiv("ct-narrative-card ct-narrative-card--lack");
     c1.createDiv({ cls: "ct-narrative-icon", text: "\u{1F534}" });
     c1.createEl("h4", { cls: "ct-narrative-heading", text: "\uCD5C\uADFC \uBD80\uC871\uD55C \uAC83" });
     const b1 = c1.createDiv("ct-narrative-body");
-    if (lacking.length === 0 && trend >= -0.3) {
-      b1.createEl("p", { text: "\uD2B9\uBCC4\uD788 \uBE60\uC9C4 \uD56D\uBAA9\uC774 \uC5C6\uC5B4\uC694. \uADE0\uD615 \uC788\uAC8C \uC798 \uC720\uC9C0\uD558\uACE0 \uC788\uC5B4\uC694." });
-    } else {
-      lacking.slice(0, 2).forEach((s) => {
-        b1.createEl("p", { text: `"${s.label}"\uC774 ${s.missed}\uC77C \uC5F0\uC18D \uBE60\uC838\uC788\uC5B4\uC694. \uC5C6\uB294 \uB0A0 \uCEE8\uB514\uC158\uC774 \uD3C9\uADE0 ${s.diff.toFixed(1)}\uC810 \uB0AE\uC544\uC694.` });
-      });
-      if (trend < -0.5)
-        b1.createEl("p", { text: `\uC804\uBC18\uC801\uC73C\uB85C \uCEE8\uB514\uC158\uC774 \uC774\uC804\uBCF4\uB2E4 ${Math.abs(trend).toFixed(1)}\uC810 \uB0AE\uC544\uC84C\uC5B4\uC694.` });
-    }
+    const lack1 = [];
+    lacking.slice(0, 2).forEach((s) => lack1.push(`"${s.label}"\uC774 ${s.missed}\uC77C \uC5F0\uC18D \uBE60\uC838\uC788\uC5B4\uC694. \uC5C6\uB294 \uB0A0 \uCEE8\uB514\uC158\uC774 ${Math.abs(s.pct)}% \uB354 \uB0AE\uC544\uC694.`));
+    if (trendPct < -10)
+      lack1.push(`\uCD5C\uADFC 3\uC77C \uCEE8\uB514\uC158\uC774 \uC774\uC804 \uB300\uBE44 ${Math.abs(trendPct)}% \uB0AE\uC544\uC84C\uC5B4\uC694.`);
+    if (stressInsight)
+      lack1.push(stressInsight);
+    if (lack1.length === 0)
+      lack1.push("\uCD5C\uADFC \uBE60\uC9C4 \uD575\uC2EC \uD56D\uBAA9\uC774 \uC5C6\uC5B4\uC694. \uADE0\uD615 \uC788\uAC8C \uC798 \uC720\uC9C0\uD558\uACE0 \uC788\uC5B4\uC694!");
+    lack1.forEach((l) => b1.createEl("p", { text: l }));
     const c2 = wrap.createDiv("ct-narrative-card ct-narrative-card--good");
     c2.createDiv({ cls: "ct-narrative-icon", text: "\u2705" });
     c2.createEl("h4", { cls: "ct-narrative-heading", text: "\uC798 \uD558\uACE0 \uC788\uB294 \uAC83" });
     const b2 = c2.createDiv("ct-narrative-body");
-    if (goingWell.length === 0) {
-      b2.createEl("p", { text: "\uC544\uC9C1 \uAFB8\uC900\uD55C \uD56D\uBAA9\uC774 \uB9CE\uC9C0 \uC54A\uC544\uC694. \uB370\uC774\uD130\uAC00 \uB354 \uC313\uC774\uBA74 \uBCF4\uC5EC\uC694." });
-    } else {
-      goingWell.slice(0, 2).forEach((s) => {
-        if (s.streak >= 3)
-          b2.createEl("p", { text: `"${s.label}"\uC744 ${s.streak}\uC77C \uC5F0\uC18D \uCC59\uAE30\uACE0 \uC788\uC5B4\uC694! \uCEE8\uB514\uC158\uC5D0 ${s.diff.toFixed(1)}\uC810 \uAE30\uC5EC\uD574\uC694.` });
-        else
-          b2.createEl("p", { text: `"${s.label}" \uCCB4\uD06C\uC728\uC774 ${Math.round(s.checkRate * 100)}%\uB85C \uAFB8\uC900\uD574\uC694. \uCEE8\uB514\uC158\uC5D0 ${s.diff.toFixed(1)}\uC810 \uC601\uD5A5\uC744 \uC918\uC694.` });
-      });
-      if (trend > 0.5)
-        b2.createEl("p", { text: `\uC804\uBC18\uC801\uC73C\uB85C \uCEE8\uB514\uC158\uC774 \uC774\uC804\uBCF4\uB2E4 ${trend.toFixed(1)}\uC810 \uC62C\uB77C\uAC00\uB294 \uC911\uC774\uC5D0\uC694.` });
-    }
+    const good2 = [];
+    goingWell.slice(0, 2).forEach((s) => {
+      if (s.streak >= 3)
+        good2.push(`"${s.label}"\uC744 ${s.streak}\uC77C \uC5F0\uC18D \uCC59\uAE30\uACE0 \uC788\uC5B4\uC694. \uC788\uB294 \uB0A0 \uCEE8\uB514\uC158\uC774 ${Math.abs(s.pct)}% \uB354 \uB192\uC544\uC694.`);
+      else
+        good2.push(`"${s.label}" \uCCB4\uD06C\uC728\uC774 ${Math.round(s.checkRate * 100)}%\uB85C \uAFB8\uC900\uD574\uC694.`);
+    });
+    if (actInsight)
+      good2.push(actInsight);
+    if (outdoorInsight)
+      good2.push(outdoorInsight);
+    if (trendPct > 10)
+      good2.push(`\uCD5C\uADFC 3\uC77C \uCEE8\uB514\uC158\uC774 \uC774\uC804 \uB300\uBE44 ${trendPct}% \uC62C\uB77C\uAC00\uB294 \uC911\uC774\uC5D0\uC694.`);
+    if (good2.length === 0)
+      good2.push("\uAFB8\uC900\uD788 \uAE30\uB85D\uC744 \uC313\uC73C\uBA74 \uD328\uD134\uC774 \uBCF4\uC77C \uAC70\uC608\uC694!");
+    good2.forEach((l) => b2.createEl("p", { text: l }));
     const c3 = wrap.createDiv("ct-narrative-card ct-narrative-card--advice");
     c3.createDiv({ cls: "ct-narrative-icon", text: "\u{1F4A1}" });
     c3.createEl("h4", { cls: "ct-narrative-heading", text: "\uC774\uB807\uAC8C \uD574\uBCF4\uC138\uC694" });
     const b3 = c3.createDiv("ct-narrative-body");
-    const advLines = [];
+    const adv3 = [];
     if (lacking.length > 0)
-      advLines.push(`\uC624\uB298\uBD80\uD130 "${lacking[0].label}"\uC744 \uB2E4\uC2DC \uCC59\uACA8\uBCF4\uC138\uC694. \uCEE8\uB514\uC158\uC774 \uBE60\uB974\uAC8C \uD68C\uBCF5\uB420 \uC218 \uC788\uC5B4\uC694.`);
+      adv3.push(`\uC624\uB298 "${lacking[0].label}"\uC744 \uB2E4\uC2DC \uCC59\uACA8\uBCF4\uC138\uC694. \uB0B4\uC77C \uCEE8\uB514\uC158 \uD68C\uBCF5\uC5D0 \uBC14\uB85C \uC601\uD5A5\uC744 \uC904 \uC218 \uC788\uC5B4\uC694.`);
     if (topItem && topItem.diff >= 1)
-      advLines.push(`\uAC00\uC7A5 \uD575\uC2EC\uC740 "${topItem.label}"\uC774\uC5D0\uC694. \uB2E4\uB978 \uAC8C \uD798\uB4E4\uB354\uB77C\uB3C4 \uC774\uAC83\uB9CC\uC740 \uC9C0\uCF1C\uBD10\uC694.`);
-    const lowImpact = stats.filter((s) => Math.abs(s.diff) < 0.3);
-    if (lowImpact.length >= 2)
-      advLines.push(`"${lowImpact.slice(0, 2).map((s) => s.label).join('", "')}"\uC740 \uCEE8\uB514\uC158 \uC601\uD5A5\uC774 \uC791\uC544\uC694. \uC5D0\uB108\uC9C0\uB97C \uD575\uC2EC \uD56D\uBAA9\uC5D0 \uC9D1\uC911\uD574\uBCF4\uB294 \uAC83\uB3C4 \uC88B\uC544\uC694.`);
-    if (advLines.length === 0)
-      advLines.push("\uAE30\uB85D\uC744 \uACC4\uC18D \uC313\uC544\uAC00\uC138\uC694. 2\uC8FC \uC774\uC0C1\uC758 \uB370\uC774\uD130\uAC00 \uBAA8\uC774\uBA74 \uD6E8\uC52C \uAD6C\uCCB4\uC801\uC778 \uC870\uC5B8\uC744 \uB4DC\uB9B4 \uC218 \uC788\uC5B4\uC694.");
-    advLines.forEach((l) => b3.createEl("p", { text: l }));
+      adv3.push(`\uAC00\uC7A5 \uD575\uC2EC\uC740 "${topItem.label}"\uC774\uC5D0\uC694. \uB2E4\uB978 \uAC8C \uD798\uB4E4\uC5B4\uB3C4 \uC774\uAC83 \uD558\uB098\uB9CC\uC740 \uC9C0\uCF1C\uBD10\uC694.`);
+    if (sleepInsight)
+      adv3.push(sleepInsight);
+    if (stressInsight && !adv3.some((l) => l.includes("\uC2A4\uD2B8\uB808\uC2A4")))
+      adv3.push(stressInsight);
+    if (lowItems.length >= 2)
+      adv3.push(`"${lowItems.slice(0, 2).map((s) => s.label).join('", "')}"\uC740 \uCEE8\uB514\uC158 \uC601\uD5A5\uC774 15% \uBBF8\uB9CC\uC774\uC5D0\uC694. \uD575\uC2EC \uD56D\uBAA9\uC5D0 \uC5D0\uB108\uC9C0\uB97C \uB354 \uC3DF\uC544\uBD10\uC694.`);
+    if (adv3.length === 0)
+      adv3.push("\uAE30\uB85D\uC774 2\uC8FC \uC774\uC0C1 \uC313\uC774\uBA74 \uB354 \uAD6C\uCCB4\uC801\uC778 \uC870\uC5B8\uC744 \uB4DC\uB9B4 \uC218 \uC788\uC5B4\uC694. \uACC4\uC18D \uC368\uC8FC\uC138\uC694!");
+    adv3.forEach((l) => b3.createEl("p", { text: l }));
   }
 };
 var DailyNoteParser = class {
