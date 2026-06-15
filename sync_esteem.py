@@ -110,7 +110,7 @@ def find_target_note(vault: Path, name: str) -> Path | None:
 def append_to_section(
     items: list[str], date: datetime, target_path: Path, section: str, date_fmt: str
 ):
-    """대상 노트의 섹션 맨 위에 항목을 추가합니다. 중복 날짜는 스킵."""
+    """대상 노트의 섹션 맨 아래에 항목을 추가합니다. 중복 날짜는 스킵."""
     text = target_path.read_text(encoding="utf-8")
     date_str = date.strftime(date_fmt)
 
@@ -121,19 +121,26 @@ def append_to_section(
     new_block = "\n".join(f"- {date_str} - {item}" for item in items)
 
     lines = text.split("\n")
+    section_start = None
     insert_idx = None
 
     for i, line in enumerate(lines):
         if re.match(rf"^#{1,6}\s+{re.escape(section)}\s*$", line):
-            insert_idx = i + 1
-            while insert_idx < len(lines) and lines[insert_idx].strip() == "":
-                insert_idx += 1
+            section_start = i
+        elif section_start is not None and re.match(r"^#{1,6}\s+", line):
+            # 다음 헤딩 직전 = 섹션 끝
+            insert_idx = i
             break
 
-    if insert_idx is None:
+    if section_start is None:
+        # 섹션 자체가 없으면 파일 끝에 새로 생성
         text = text.rstrip() + f"\n\n## {section}\n{new_block}\n"
+    elif insert_idx is None:
+        # 섹션이 마지막 섹션인 경우 → 파일 맨 끝에 추가
+        text = text.rstrip() + f"\n{new_block}\n"
     else:
-        lines.insert(insert_idx, new_block)
+        # 섹션 끝(다음 헤딩 바로 위)에 추가
+        lines.insert(insert_idx, new_block + "\n")
         text = "\n".join(lines)
 
     target_path.write_text(text, encoding="utf-8")
