@@ -107,18 +107,25 @@ def find_target_note(vault: Path, name: str) -> Path | None:
     return None
 
 
+def make_block(date_str: str, items: list[str]) -> str:
+    """날짜 + 항목 블록을 생성합니다."""
+    bullet_lines = "\n".join(f"- {item}" for item in items)
+    return f"{date_str}\n\n{bullet_lines}\n"
+
+
 def append_to_section(
-    items: list[str], date: datetime, target_path: Path, section: str, date_fmt: str
+    items: list[str], date: datetime, target_path: Path, section: str,
+    daily_fmt: str, output_fmt: str
 ):
     """대상 노트의 섹션 맨 아래에 항목을 추가합니다. 중복 날짜는 스킵."""
     text = target_path.read_text(encoding="utf-8")
-    date_str = date.strftime(date_fmt)
+    date_str = date.strftime(output_fmt)
 
     if date_str in text:
         log.info("[SKIP] %s 날짜가 이미 기록되어 있습니다.", date_str)
         return
 
-    new_block = "\n".join(f"- {date_str} - {item}" for item in items)
+    new_block = make_block(date_str, items)
 
     lines = text.split("\n")
     section_start = None
@@ -128,25 +135,21 @@ def append_to_section(
         if re.match(rf"^#{1,6}\s+{re.escape(section)}\s*$", line):
             section_start = i
         elif section_start is not None and re.match(r"^#{1,6}\s+", line):
-            # 다음 헤딩 직전 = 섹션 끝
             insert_idx = i
             break
 
     if section_start is None:
-        # 섹션 자체가 없으면 파일 끝에 새로 생성
-        text = text.rstrip() + f"\n\n## {section}\n{new_block}\n"
+        text = text.rstrip() + f"\n\n## {section}\n\n{new_block}"
     elif insert_idx is None:
-        # 섹션이 마지막 섹션인 경우 → 파일 맨 끝에 추가
-        text = text.rstrip() + f"\n{new_block}\n"
+        text = text.rstrip() + f"\n\n{new_block}"
     else:
-        # 섹션 끝(다음 헤딩 바로 위)에 추가
         lines.insert(insert_idx, new_block + "\n")
         text = "\n".join(lines)
 
     target_path.write_text(text, encoding="utf-8")
     log.info("[OK] %s 자존노트 %d개 항목 추가 완료", date_str, len(items))
     for item in items:
-        log.info("  - %s - %s", date_str, item)
+        log.info("  - %s", item)
 
 
 def main():
@@ -157,8 +160,9 @@ def main():
     vault = find_vault(obs.get("vault_path", "").strip())
     daily_folder = obs.get("daily_folder", "Daily").strip()
     daily_fmt = obs.get("daily_format", "%Y-%m-%d").strip()
+    output_fmt = obs.get("output_date_format", "%Y.%m.%d").strip()
     source_heading = notes.get("source_heading", "자존노트").strip()
-    target_name = notes.get("target_note", "0.나.md").strip()
+    target_name = notes.get("target_note", "자존노트.md").strip()
     target_section = notes.get("target_section", "하루자존").strip()
 
     yesterday = datetime.now() - timedelta(days=1)
@@ -179,7 +183,7 @@ def main():
         log.error("'%s' 파일을 볼트에서 찾을 수 없습니다.", target_name)
         sys.exit(1)
 
-    append_to_section(items, yesterday, target_path, target_section, daily_fmt)
+    append_to_section(items, yesterday, target_path, target_section, daily_fmt, output_fmt)
 
 
 if __name__ == "__main__":

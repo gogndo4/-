@@ -80,15 +80,20 @@ def extract_section_items(note_path: Path, heading: str) -> list[str]:
     return items
 
 
+def make_block(display_date: str, items: list[str]) -> str:
+    bullet_lines = "\n".join(f"- {item}" for item in items)
+    return f"{display_date}\n\n{bullet_lines}\n"
+
+
 def append_to_target(
-    date_str: str, items: list[str], target_path: Path, section: str, existing_dates: set
+    display_date: str, items: list[str], target_path: Path, section: str, existing_dates: set
 ) -> bool:
-    if date_str in existing_dates:
-        log.info("[SKIP] %s 이미 존재", date_str)
+    if display_date in existing_dates:
+        log.info("[SKIP] %s 이미 존재", display_date)
         return False
 
     text = target_path.read_text(encoding="utf-8")
-    new_block = "\n".join(f"- {date_str} - {item}" for item in items)
+    new_block = make_block(display_date, items)
 
     lines = text.split("\n")
     section_start = None
@@ -102,15 +107,15 @@ def append_to_target(
             break
 
     if section_start is None:
-        text = text.rstrip() + f"\n\n## {section}\n{new_block}\n"
+        text = text.rstrip() + f"\n\n## {section}\n\n{new_block}"
     elif insert_idx is None:
-        text = text.rstrip() + f"\n{new_block}\n"
+        text = text.rstrip() + f"\n\n{new_block}"
     else:
         lines.insert(insert_idx, new_block + "\n")
         text = "\n".join(lines)
 
     target_path.write_text(text, encoding="utf-8")
-    existing_dates.add(date_str)
+    existing_dates.add(display_date)
     return True
 
 
@@ -119,7 +124,7 @@ def get_existing_dates(target_path: Path, section: str) -> set[str]:
     text = target_path.read_text(encoding="utf-8")
     in_section = False
     dates = set()
-    date_pattern = re.compile(r"(\d{4}-\d{2}-\d{2})")
+    date_pattern = re.compile(r"(\d{4}[.\-]\d{2}[.\-]\d{2})")
     for line in text.split("\n"):
         if re.match(rf"^#{1,6}\s+{re.escape(section)}\s*$", line):
             in_section = True
@@ -141,6 +146,7 @@ def main():
     vault = find_vault(obs.get("vault_path", "").strip())
     daily_folder = obs.get("daily_folder", "Daily").strip()
     daily_fmt = obs.get("daily_format", "%Y-%m-%d").strip()
+    output_fmt = obs.get("output_date_format", "%Y.%m.%d").strip()
     source_heading = notes.get("source_heading", "자존노트").strip()
     target_name = notes.get("target_note", "자존노트.md").strip()
     target_section = notes.get("target_section", "하루자존").strip()
@@ -172,17 +178,17 @@ def main():
         date = parse_date_from_filename(note_path.stem, daily_fmt)
         if not date:
             continue
-        date_str = date.strftime(daily_fmt)
+        display_date = date.strftime(output_fmt)
 
         items = extract_section_items(note_path, source_heading)
         if not items:
             continue
 
-        added = append_to_target(date_str, items, target_path, target_section, existing_dates)
+        added = append_to_target(display_date, items, target_path, target_section, existing_dates)
         if added:
             total_added += len(items)
-            processed_dates.append(date_str)
-            log.info("[OK] %s → %d개 항목 추가", date_str, len(items))
+            processed_dates.append(display_date)
+            log.info("[OK] %s → %d개 항목 추가", display_date, len(items))
 
     log.info("")
     log.info("=== 백필 완료 ===")
