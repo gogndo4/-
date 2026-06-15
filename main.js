@@ -564,45 +564,57 @@ var TrackerView = class extends import_obsidian.ItemView {
     return stats;
   }
   renderCorrelations(container, data) {
-    const stats = this.buildItemStats(data).filter((s) => s.hasEnoughData);
-    if (stats.length === 0) {
+    const raw = this.buildItemStats(data).filter((s) => s.hasEnoughData);
+    if (raw.length === 0) {
       container.createEl("p", { text: "\uD56D\uBAA9\uBCC4 \uBE44\uAD50\uC5D0 \uB370\uC774\uD130\uAC00 \uB354 \uD544\uC694\uD574\uC694.", cls: "ct-empty" });
       return;
     }
-    container.createEl("h4", { text: "\uD56D\uBAA9\uBCC4 \uCEE8\uB514\uC158 \uC601\uD5A5\uB3C4", cls: "ct-impact-title" });
-    const tiers = [
-      { key: "critical", label: "\uD575\uC2EC \uC2B5\uAD00", sub: "\uC5C6\uC73C\uBA74 \uCEE8\uB514\uC158\uC774 \uD06C\uAC8C \uB2EC\uB77C\uC838\uC694", items: stats.filter((s) => s.diff >= 1.5) },
-      { key: "good", label: "\uB3C4\uC6C0\uC774 \uB418\uB294 \uC2B5\uAD00", sub: "\uC788\uC744 \uB54C \uB208\uC5D0 \uB744\uAC8C \uC88B\uC544\uC694", items: stats.filter((s) => s.diff >= 0.4 && s.diff < 1.5) },
-      { key: "neutral", label: "\uC601\uD5A5 \uB0AE\uC74C", sub: "\uCEE8\uB514\uC158\uACFC \uC5F0\uAD00\uC774 \uC801\uC5B4\uC694", items: stats.filter((s) => Math.abs(s.diff) < 0.4) },
-      { key: "bad", label: "\uD53C\uD558\uBA74 \uC88B\uC740 \uAC83", sub: "\uC788\uC744 \uB54C \uC624\uD788\uB824 \uB0AE\uC544\uC9C0\uB294 \uACBD\uD5A5", items: stats.filter((s) => s.diff < -0.4) }
-    ];
-    const maxPct = Math.max(...stats.map((s) => Math.abs(s.pct)), 1);
-    tiers.forEach((tier) => {
-      if (tier.items.length === 0)
-        return;
-      const sec = container.createDiv(`ct-tier ct-tier--${tier.key}`);
-      const hdr = sec.createDiv("ct-tier-hdr");
-      hdr.createEl("span", { text: tier.label, cls: "ct-tier-name" });
-      hdr.createEl("span", { text: tier.sub, cls: "ct-tier-sub" });
-      tier.items.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct)).forEach((item) => {
-        const row = sec.createDiv("ct-impact-row");
-        const left = row.createDiv("ct-impact-left");
-        left.createEl("span", { text: item.label, cls: "ct-impact-name" });
-        if (item.missed >= 3)
-          left.createEl("span", { text: `${item.missed}\uC77C\uC9F8 \uBBF8\uCCB4\uD06C`, cls: "ct-badge ct-badge--warn" });
-        else if (item.streak >= 3)
-          left.createEl("span", { text: `${item.streak}\uC77C \uC5F0\uC18D`, cls: "ct-badge ct-badge--good" });
-        const right = row.createDiv("ct-impact-right");
-        const barWrap = right.createDiv("ct-impact-bar-track");
-        const bar = barWrap.createDiv(`ct-impact-bar ${item.diff >= 0 ? "ct-impact-bar--pos" : "ct-impact-bar--neg"}`);
-        bar.style.width = `${Math.round(Math.abs(item.pct) / maxPct * 100)}%`;
-        const meta = right.createDiv("ct-impact-meta");
-        const absPct = Math.abs(item.pct);
-        const pctLabel = item.diff >= 0 ? `\uCEE8\uB514\uC158 ${absPct}% \uB354 \uC88B\uC74C` : `\uCEE8\uB514\uC158 ${absPct}% \uB354 \uB0AE\uC74C`;
-        meta.createEl("span", { cls: `ct-impact-diff ${item.diff >= 0 ? "pos" : "neg"}`, text: pctLabel });
-        meta.createEl("span", { cls: "ct-impact-rate", text: `\uCCB4\uD06C\uC728 ${Math.round(item.checkRate * 100)}%` });
-      });
+    const withSignal = raw.map((s) => {
+      const n = data.filter((d) => d.checkboxItems.some((cb) => cb.label === s.label)).length;
+      const reliability = Math.min(n / 10, 1);
+      return { ...s, signal: Math.abs(s.pct) * reliability };
     });
+    const meaningful = withSignal.filter((s) => Math.abs(s.pct) >= 10 || s.missed >= 2 && s.diff > 0.4).sort((a, b) => b.signal - a.signal).slice(0, 5);
+    const slipping = withSignal.filter((s) => s.diff > 0.5 && s.missed >= 2).sort((a, b) => b.diff - a.diff);
+    if (meaningful.length === 0) {
+      container.createEl("p", { text: "\uC720\uC758\uBBF8\uD55C \uC601\uD5A5 \uD56D\uBAA9\uC744 \uCC3E\uC73C\uB824\uBA74 \uB370\uC774\uD130\uAC00 \uB354 \uD544\uC694\uD574\uC694.", cls: "ct-empty" });
+      return;
+    }
+    if (slipping.length > 0) {
+      const alert = container.createDiv("ct-slip-alert");
+      alert.createEl("span", { cls: "ct-slip-icon", text: "\u26A0\uFE0F" });
+      const texts = alert.createDiv("ct-slip-texts");
+      slipping.slice(0, 2).forEach((s) => texts.createEl("p", {
+        cls: "ct-slip-text",
+        text: `"${s.label}" ${s.missed}\uC77C\uC9F8 \uBE60\uC9D0 \u2014 \uC788\uC744 \uB54C \uCEE8\uB514\uC158 ${Math.abs(s.pct)}% \uB354 \uB192\uC544\uC694`
+      }));
+    }
+    container.createEl("h4", { text: "\uD575\uC2EC \uC9C0\uD45C TOP 5", cls: "ct-impact-title" });
+    const maxPct = Math.max(...meaningful.map((s) => Math.abs(s.pct)), 1);
+    const list = container.createDiv("ct-impact-list");
+    meaningful.forEach((item, idx) => {
+      const row = list.createDiv("ct-impact-row");
+      row.createEl("span", { cls: "ct-rank", text: String(idx + 1) });
+      const nameWrap = row.createDiv("ct-impact-name-wrap");
+      nameWrap.createEl("span", { cls: "ct-impact-name", text: item.label });
+      const barSec = row.createDiv("ct-impact-bar-section");
+      const track = barSec.createDiv("ct-impact-bar-track");
+      const bar = track.createDiv(`ct-impact-bar ${item.diff >= 0 ? "ct-impact-bar--pos" : "ct-impact-bar--neg"}`);
+      bar.style.width = `${Math.round(Math.abs(item.pct) / maxPct * 100)}%`;
+      barSec.createEl("span", {
+        cls: `ct-impact-pct ${item.diff >= 0 ? "pos" : "neg"}`,
+        text: `${item.diff >= 0 ? "+" : ""}${item.pct}%`
+      });
+      if (item.missed >= 2)
+        row.createEl("span", { cls: "ct-badge ct-badge--warn", text: `${item.missed}\uC77C \uBBF8\uCCB4\uD06C` });
+      else if (item.streak >= 3)
+        row.createEl("span", { cls: "ct-badge ct-badge--good", text: `${item.streak}\uC77C \uC5F0\uC18D` });
+      else
+        row.createEl("span", { cls: "ct-badge ct-badge--neutral", text: `${Math.round(item.checkRate * 100)}%` });
+    });
+    const hidden = raw.length - meaningful.length;
+    if (hidden > 0)
+      container.createEl("p", { cls: "ct-filtered-note", text: `\uC601\uD5A5 \uB0AE\uC740 \uD56D\uBAA9 ${hidden}\uAC1C\uB294 \uC0DD\uB7B5\uD588\uC5B4\uC694` });
   }
   renderStatInsights(container, data) {
     if (data.length < 5)

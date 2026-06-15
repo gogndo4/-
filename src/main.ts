@@ -528,55 +528,81 @@ class TrackerView extends ItemView {
   }
 
   renderCorrelations(container: HTMLElement, data: DailyNoteData[]) {
-    const stats = this.buildItemStats(data).filter(s => s.hasEnoughData);
-    if (stats.length === 0) {
+    const raw = this.buildItemStats(data).filter(s => s.hasEnoughData);
+    if (raw.length === 0) {
       container.createEl('p', { text: '항목별 비교에 데이터가 더 필요해요.', cls: 'ct-empty' });
       return;
     }
 
-    container.createEl('h4', { text: '항목별 컨디션 영향도', cls: 'ct-impact-title' });
-
-    const tiers = [
-      { key: 'critical', label: '핵심 습관',       sub: '없으면 컨디션이 크게 달라져요', items: stats.filter(s => s.diff >= 1.5) },
-      { key: 'good',     label: '도움이 되는 습관', sub: '있을 때 눈에 띄게 좋아요',      items: stats.filter(s => s.diff >= 0.4 && s.diff < 1.5) },
-      { key: 'neutral',  label: '영향 낮음',         sub: '컨디션과 연관이 적어요',         items: stats.filter(s => Math.abs(s.diff) < 0.4) },
-      { key: 'bad',      label: '피하면 좋은 것',    sub: '있을 때 오히려 낮아지는 경향',   items: stats.filter(s => s.diff < -0.4) },
-    ];
-
-    const maxPct = Math.max(...stats.map(s => Math.abs(s.pct)), 1);
-
-    tiers.forEach(tier => {
-      if (tier.items.length === 0) return;
-      const sec = container.createDiv(`ct-tier ct-tier--${tier.key}`);
-      const hdr = sec.createDiv('ct-tier-hdr');
-      hdr.createEl('span', { text: tier.label, cls: 'ct-tier-name' });
-      hdr.createEl('span', { text: tier.sub,   cls: 'ct-tier-sub'  });
-
-      tier.items.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct)).forEach(item => {
-        const row = sec.createDiv('ct-impact-row');
-
-        const left = row.createDiv('ct-impact-left');
-        left.createEl('span', { text: item.label, cls: 'ct-impact-name' });
-        if (item.missed >= 3)
-          left.createEl('span', { text: `${item.missed}일째 미체크`, cls: 'ct-badge ct-badge--warn' });
-        else if (item.streak >= 3)
-          left.createEl('span', { text: `${item.streak}일 연속`, cls: 'ct-badge ct-badge--good' });
-
-        const right = row.createDiv('ct-impact-right');
-        const barWrap = right.createDiv('ct-impact-bar-track');
-        const bar = barWrap.createDiv(`ct-impact-bar ${item.diff >= 0 ? 'ct-impact-bar--pos' : 'ct-impact-bar--neg'}`);
-        bar.style.width = `${Math.round((Math.abs(item.pct) / maxPct) * 100)}%`;
-
-        const meta = right.createDiv('ct-impact-meta');
-        // % 언어로 표시
-        const absPct = Math.abs(item.pct);
-        const pctLabel = item.diff >= 0
-          ? `컨디션 ${absPct}% 더 좋음`
-          : `컨디션 ${absPct}% 더 낮음`;
-        meta.createEl('span', { cls: `ct-impact-diff ${item.diff >= 0 ? 'pos' : 'neg'}`, text: pctLabel });
-        meta.createEl('span', { cls: 'ct-impact-rate', text: `체크율 ${Math.round(item.checkRate * 100)}%` });
-      });
+    // 신호 강도 = |pct| × 데이터 신뢰도 (샘플 많을수록 신뢰)
+    const withSignal = raw.map(s => {
+      const n = data.filter(d => d.checkboxItems.some(cb => cb.label === s.label)).length;
+      const reliability = Math.min(n / 10, 1);
+      return { ...s, signal: Math.abs(s.pct) * reliability };
     });
+
+    // 유의미한 것만 (|pct|≥10% 또는 최근 중요 항목 누락)
+    const meaningful = withSignal
+      .filter(s => Math.abs(s.pct) >= 10 || (s.missed >= 2 && s.diff > 0.4))
+      .sort((a, b) => b.signal - a.signal)
+      .slice(0, 5);
+
+    // 지금 놓치고 있는 중요 항목
+    const slipping = withSignal
+      .filter(s => s.diff > 0.5 && s.missed >= 2)
+      .sort((a, b) => b.diff - a.diff);
+
+    if (meaningful.length === 0) {
+      container.createEl('p', { text: '유의미한 영향 항목을 찾으려면 데이터가 더 필요해요.', cls: 'ct-empty' });
+      return;
+    }
+
+    // ── 경고 배너 (슬리핑 중요 항목) ──
+    if (slipping.length > 0) {
+      const alert = container.createDiv('ct-slip-alert');
+      alert.createEl('span', { cls: 'ct-slip-icon', text: '⚠️' });
+      const texts = alert.createDiv('ct-slip-texts');
+      slipping.slice(0, 2).forEach(s =>
+        texts.createEl('p', {
+          cls: 'ct-slip-text',
+          text: `"${s.label}" ${s.missed}일째 빠짐 — 있을 때 컨디션 ${Math.abs(s.pct)}% 더 높아요`,
+        }));
+    }
+
+    // ── 핵심 지표 랭킹 ──
+    container.createEl('h4', { text: '핵심 지표 TOP 5', cls: 'ct-impact-title' });
+
+    const maxPct = Math.max(...meaningful.map(s => Math.abs(s.pct)), 1);
+    const list = container.createDiv('ct-impact-list');
+
+    meaningful.forEach((item, idx) => {
+      const row = list.createDiv('ct-impact-row');
+
+      row.createEl('span', { cls: 'ct-rank', text: String(idx + 1) });
+
+      const nameWrap = row.createDiv('ct-impact-name-wrap');
+      nameWrap.createEl('span', { cls: 'ct-impact-name', text: item.label });
+
+      const barSec = row.createDiv('ct-impact-bar-section');
+      const track = barSec.createDiv('ct-impact-bar-track');
+      const bar = track.createDiv(`ct-impact-bar ${item.diff >= 0 ? 'ct-impact-bar--pos' : 'ct-impact-bar--neg'}`);
+      bar.style.width = `${Math.round((Math.abs(item.pct) / maxPct) * 100)}%`;
+      barSec.createEl('span', {
+        cls: `ct-impact-pct ${item.diff >= 0 ? 'pos' : 'neg'}`,
+        text: `${item.diff >= 0 ? '+' : ''}${item.pct}%`,
+      });
+
+      if (item.missed >= 2)
+        row.createEl('span', { cls: 'ct-badge ct-badge--warn', text: `${item.missed}일 미체크` });
+      else if (item.streak >= 3)
+        row.createEl('span', { cls: 'ct-badge ct-badge--good', text: `${item.streak}일 연속` });
+      else
+        row.createEl('span', { cls: 'ct-badge ct-badge--neutral', text: `${Math.round(item.checkRate * 100)}%` });
+    });
+
+    const hidden = raw.length - meaningful.length;
+    if (hidden > 0)
+      container.createEl('p', { cls: 'ct-filtered-note', text: `영향 낮은 항목 ${hidden}개는 생략했어요` });
   }
 
   renderStatInsights(container: HTMLElement, data: DailyNoteData[]) {
