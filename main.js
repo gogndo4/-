@@ -28,7 +28,6 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var DEFAULT_SETTINGS = {
-  anthropicApiKey: "",
   dailyNotesFolder: "",
   conditionSectionHeader: "\uCEE8\uB514\uC158"
 };
@@ -57,19 +56,15 @@ var DailyConditionTracker = class extends import_obsidian.Plugin {
     const today = this.formatDate(now);
     if (now.getHours() === 5 && this.settings.lastAutoAnalyze !== today) {
       this.settings.lastAutoAnalyze = today;
-      await this.saveData(this.buildSaveData());
       const yesterday = new Date(now);
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayStr = this.formatDate(yesterday);
-      if (!this.cachedData.has(yesterdayStr) && this.settings.anthropicApiKey) {
+      if (!this.cachedData.has(yesterdayStr)) {
         new import_obsidian.Notice("\uCEE8\uB514\uC158 \uD2B8\uB798\uCEE4: \uC5B4\uC81C \uB178\uD2B8\uB97C \uBD84\uC11D\uD569\uB2C8\uB2E4...");
-        try {
-          await this.analyzeDate(yesterdayStr);
-          new import_obsidian.Notice("\uCEE8\uB514\uC158 \uD2B8\uB798\uCEE4: \uC5B4\uC81C \uCEE8\uB514\uC158 \uBD84\uC11D \uC644\uB8CC!");
-        } catch (e) {
-          console.error("Auto analyze failed:", e);
-        }
+        await this.analyzeDate(yesterdayStr);
+        new import_obsidian.Notice("\uCEE8\uB514\uC158 \uD2B8\uB798\uCEE4: \uBD84\uC11D \uC644\uB8CC!");
       }
+      await this.saveData(this.buildSaveData());
     }
   }
   async analyzeDate(dateStr) {
@@ -80,15 +75,13 @@ var DailyConditionTracker = class extends import_obsidian.Plugin {
     const noteData = await parser.parseNote(file, dateStr);
     if (!noteData)
       return;
-    if (noteData.freeText.length > 10 && this.settings.anthropicApiKey) {
-      const analyzer = new ClaudeAnalyzer(this.settings.anthropicApiKey);
-      const result = await analyzer.inferConditionScore(noteData.freeText);
+    if (noteData.freeText.length > 5) {
+      const result = KeywordScorer.score(noteData.freeText);
       noteData.conditionScore = result.score;
       noteData.scoreReason = result.reason;
       noteData.analyzedAt = Date.now();
     }
     this.cachedData.set(dateStr, noteData);
-    await this.saveData(this.buildSaveData());
   }
   buildSaveData() {
     const cache = {};
@@ -125,12 +118,124 @@ var DailyConditionTracker = class extends import_obsidian.Plugin {
     return `${y}-${m}-${day}`;
   }
 };
+var POSITIVE_STRONG = ["\uCD5C\uACE0", "\uC644\uBCBD", "\uB118\uCE58", "\uB108\uBB34\uC88B", "\uC5C4\uCCAD\uC88B", "\uAE30\uBD84\uCD5C\uACE0", "\uCEE8\uB514\uC158\uCD5C\uACE0"];
+var POSITIVE = [
+  "\uC88B\uB2E4",
+  "\uC88B\uC544",
+  "\uC88B\uC74C",
+  "\uC88B\uC558",
+  "\uD65C\uAE30",
+  "\uC0C1\uCF8C",
+  "\uAE30\uBD84\uC88B",
+  "\uC5D0\uB108\uC9C0",
+  "\uC990\uAC81",
+  "\uD589\uBCF5",
+  "\uC798\uB410",
+  "\uD3B8\uC548",
+  "\uCDA9\uBD84",
+  "\uAD1C\uCC2E",
+  "\uC0B0\uB73B",
+  "\uAC1C\uC6B4",
+  "\uC798\uC7A4",
+  "\uC798\uBA39",
+  "\uD798\uC788",
+  "\uD65C\uBC1C",
+  "\uB9D1\uB2E4",
+  "\uB9D1\uC74C",
+  "\uC0C1\uD07C",
+  "\uC218\uC6D4",
+  "\uC6D0\uD65C",
+  "\uAC00\uBFD0",
+  "\uC0C1\uD0DC\uC88B",
+  "\uBAB8\uC88B",
+  "\uCEE8\uB514\uC158\uC88B",
+  "\uC758\uC695",
+  "\uC9D1\uC911\uC798",
+  "\uC798\uD480",
+  "\uC0DD\uC0B0\uC801",
+  "\uD65C\uB825",
+  "\uC5F4\uC815",
+  "\uBFCC\uB4EF",
+  "\uC131\uCDE8"
+];
+var NEGATIVE_STRONG = ["\uCD5C\uC545", "\uB108\uBB34\uD798", "\uB108\uBB34\uD53C\uACE4", "\uC2EC\uD558\uAC8C\uC544", "\uC8FD\uACA0", "\uC4F0\uB7EC"];
+var NEGATIVE = [
+  "\uD53C\uACE4",
+  "\uD798\uB4E4",
+  "\uB098\uC058\uB2E4",
+  "\uC544\uD504\uB2E4",
+  "\uBB34\uAE30\uB825",
+  "\uC878\uB9AC\uB2E4",
+  "\uC878\uB9BC",
+  "\uD798\uC5C6",
+  "\uC9C0\uCE68",
+  "\uB450\uD1B5",
+  "\uC2A4\uD2B8\uB808\uC2A4",
+  "\uBD88\uC548",
+  "\uC6B0\uC6B8",
+  "\uBABB\uC7A4",
+  "\uBABB\uBA39",
+  "\uCC0C\uBFCC",
+  "\uBED0\uADFC",
+  "\uBB34\uAC81",
+  "\uC9C0\uB8E8",
+  "\uC9D1\uC911\uC548",
+  "\uD750\uB9AC\uBA4D",
+  "\uBAB8\uBB34\uAC70",
+  "\uCEE8\uB514\uC158\uB098",
+  "\uC0C1\uD0DC\uC548",
+  "\uBAB8\uC548\uC88B",
+  "\uC758\uC695\uC5C6",
+  "\uC9DC\uC99D",
+  "\uB2F5\uB2F5",
+  "\uBB34\uB108",
+  "\uBC88\uC544\uC6C3",
+  "\uBC88\uC544",
+  "\uBAB8\uC0B4",
+  "\uAC10\uAE30",
+  "\uC5F4\uC774"
+];
+var KeywordScorer = class {
+  static score(text) {
+    const t = text.replace(/\s/g, "");
+    let points = 0;
+    const hits = [];
+    for (const w of POSITIVE_STRONG) {
+      if (t.includes(w)) {
+        points += 2;
+        hits.push(`+${w}`);
+      }
+    }
+    for (const w of POSITIVE) {
+      if (t.includes(w)) {
+        points += 1;
+        hits.push(`+${w}`);
+      }
+    }
+    for (const w of NEGATIVE_STRONG) {
+      if (t.includes(w)) {
+        points -= 2;
+        hits.push(`-${w}`);
+      }
+    }
+    for (const w of NEGATIVE) {
+      if (t.includes(w)) {
+        points -= 1;
+        hits.push(`-${w}`);
+      }
+    }
+    const raw = 5.5 + points * 0.5;
+    const clamped = Math.min(10, Math.max(1, raw));
+    const score = Math.round(clamped * 2) / 2;
+    const reason = hits.length > 0 ? hits.slice(0, 4).join(", ") : "\uD0A4\uC6CC\uB4DC \uC5C6\uC74C (\uC911\uB9BD)";
+    return { score, reason };
+  }
+};
 var TrackerView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.currentView = "week";
     this.isAnalyzing = false;
-    this.aiInsightText = "";
     this.plugin = plugin;
   }
   getViewType() {
@@ -196,39 +301,16 @@ var TrackerView = class extends import_obsidian.ItemView {
     insightsArea.createEl("h3", { text: "\uC778\uC0AC\uC774\uD2B8 & \uC0C1\uAD00\uAD00\uACC4", cls: "ct-insights-title" });
     if (withScores.length >= 3) {
       this.renderCorrelations(insightsArea, withScores);
-      if (this.aiInsightText) {
-        const aiDiv = insightsArea.createDiv("ct-ai-box");
-        aiDiv.createEl("h4", { text: "\u{1F916} AI \uC885\uD569 \uC778\uC0AC\uC774\uD2B8" });
-        aiDiv.createEl("p", { text: this.aiInsightText });
-      } else if (this.plugin.settings.anthropicApiKey && withScores.length >= 5) {
-        const aiBtn = insightsArea.createEl("button", { text: "AI \uC778\uC0AC\uC774\uD2B8 \uC0DD\uC131", cls: "ct-btn-secondary" });
-        aiBtn.onclick = async () => {
-          aiBtn.setText("\uBD84\uC11D \uC911...");
-          aiBtn.disabled = true;
-          try {
-            const analyzer = new ClaudeAnalyzer(this.plugin.settings.anthropicApiKey);
-            this.aiInsightText = await analyzer.generateInsights(withScores);
-            await this.render();
-          } catch (e) {
-            aiBtn.setText("\uC0DD\uC131 \uC2E4\uD328 - \uC7AC\uC2DC\uB3C4");
-            aiBtn.disabled = false;
-          }
-        };
-      }
+      this.renderStatInsights(insightsArea, withScores);
     } else {
       insightsArea.createEl("p", { text: "\uC778\uC0AC\uC774\uD2B8\uB97C \uD45C\uC2DC\uD558\uB824\uBA74 3\uC77C \uC774\uC0C1\uC758 \uBD84\uC11D \uB370\uC774\uD130\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4.", cls: "ct-empty" });
     }
   }
-  async runAnalysis(container) {
-    if (!this.plugin.settings.anthropicApiKey) {
-      new import_obsidian.Notice("\uC124\uC815\uC5D0\uC11C Anthropic API \uD0A4\uB97C \uBA3C\uC800 \uC785\uB825\uD574\uC8FC\uC138\uC694.");
-      return;
-    }
+  async runAnalysis(_container) {
     this.isAnalyzing = true;
     await this.render();
     try {
       const parser = new DailyNoteParser(this.app, this.plugin.settings);
-      const analyzer = new ClaudeAnalyzer(this.plugin.settings.anthropicApiKey);
       const { start, end } = this.getDateRange();
       const files = parser.getDailyNoteFiles(start, end);
       let count = 0;
@@ -236,28 +318,20 @@ var TrackerView = class extends import_obsidian.ItemView {
         const dateStr = parser.getDateFromFile(file);
         if (!dateStr)
           continue;
-        if (this.plugin.cachedData.has(dateStr)) {
-          count++;
-          continue;
-        }
         const noteData = await parser.parseNote(file, dateStr);
         if (!noteData)
           continue;
-        if (noteData.freeText.length > 10) {
-          try {
-            const result = await analyzer.inferConditionScore(noteData.freeText);
-            noteData.conditionScore = result.score;
-            noteData.scoreReason = result.reason;
-            noteData.analyzedAt = Date.now();
-          } catch (e) {
-            console.error("Score inference failed for", dateStr, e);
-          }
+        if (noteData.freeText.length > 5) {
+          const result = KeywordScorer.score(noteData.freeText);
+          noteData.conditionScore = result.score;
+          noteData.scoreReason = result.reason;
+          noteData.analyzedAt = Date.now();
         }
         this.plugin.cachedData.set(dateStr, noteData);
         count++;
       }
       await this.plugin.saveData(this.plugin.buildSaveData());
-      new import_obsidian.Notice(`${count}\uAC1C \uB178\uD2B8 \uBD84\uC11D \uC644\uB8CC`);
+      new import_obsidian.Notice(`${count}\uAC1C \uB178\uD2B8 \uBD84\uC11D \uC644\uB8CC (\uB85C\uCEEC)`);
     } catch (e) {
       new import_obsidian.Notice(`\uBD84\uC11D \uC2E4\uD328: ${e.message}`);
     } finally {
@@ -388,6 +462,78 @@ var TrackerView = class extends import_obsidian.ItemView {
       card.createDiv({ cls: "ct-corr-detail", text: `\uCCB4\uD06C:${c.checkedAvg.toFixed(1)} \uBBF8\uCCB4\uD06C:${c.uncheckedAvg.toFixed(1)}` });
     });
   }
+  renderStatInsights(container, data) {
+    if (data.length < 5)
+      return;
+    const allLabels = /* @__PURE__ */ new Set();
+    data.forEach((d) => d.checkboxItems.forEach((cb) => allLabels.add(cb.label)));
+    const correlations = [];
+    allLabels.forEach((label) => {
+      const checked = data.filter((d) => d.checkboxItems.some((cb) => cb.label === label && cb.checked));
+      const unchecked = data.filter((d) => d.checkboxItems.some((cb) => cb.label === label && !cb.checked));
+      if (checked.length < 2 || unchecked.length < 2)
+        return;
+      const checkedAvg = checked.reduce((s, d) => {
+        var _a;
+        return s + ((_a = d.conditionScore) != null ? _a : 0);
+      }, 0) / checked.length;
+      const uncheckedAvg = unchecked.reduce((s, d) => {
+        var _a;
+        return s + ((_a = d.conditionScore) != null ? _a : 0);
+      }, 0) / unchecked.length;
+      correlations.push({ label, diff: checkedAvg - uncheckedAvg, checkedAvg });
+    });
+    correlations.sort((a, b) => b.diff - a.diff);
+    const scores = data.map((d) => {
+      var _a;
+      return (_a = d.conditionScore) != null ? _a : 0;
+    }).filter((s) => s > 0);
+    const recentHalf = scores.slice(Math.floor(scores.length / 2));
+    const earlyHalf = scores.slice(0, Math.floor(scores.length / 2));
+    const recentAvg = recentHalf.reduce((s, v) => s + v, 0) / (recentHalf.length || 1);
+    const earlyAvg = earlyHalf.reduce((s, v) => s + v, 0) / (earlyHalf.length || 1);
+    const trend = recentAvg - earlyAvg;
+    const lines = [];
+    if (correlations.length > 0) {
+      const top = correlations[0];
+      if (top.diff > 0.5) {
+        lines.push(`"${top.label}" \uD56D\uBAA9\uC774 \uCCB4\uD06C\uB410\uC744 \uB54C \uCEE8\uB514\uC158\uC774 \uD3C9\uADE0 ${top.diff.toFixed(1)}\uC810 \uB192\uC544\uC694. \uAC00\uC7A5 \uD575\uC2EC \uC2B5\uAD00\uC785\uB2C8\uB2E4.`);
+      }
+      const bottom = correlations[correlations.length - 1];
+      if (bottom.diff < -0.5) {
+        lines.push(`"${bottom.label}"\uC774 \uBE60\uC9C4 \uB0A0\uC740 \uCEE8\uB514\uC158\uC774 ${Math.abs(bottom.diff).toFixed(1)}\uC810 \uB0AE\uC544\uC694. \uBE60\uD2B8\uB9AC\uC9C0 \uB9C8\uC138\uC694.`);
+      }
+    }
+    if (Math.abs(trend) > 0.3) {
+      lines.push(
+        trend > 0 ? `\uCD5C\uADFC \uCEE8\uB514\uC158\uC774 \uC0C1\uC2B9 \uCD94\uC138\uC608\uC694 (+${trend.toFixed(1)}). \uC798 \uD558\uACE0 \uC788\uC5B4\uC694!` : `\uCD5C\uADFC \uCEE8\uB514\uC158\uC774 \uD558\uB77D \uCD94\uC138\uC608\uC694 (${trend.toFixed(1)}). \uB8E8\uD2F4\uC744 \uC810\uAC80\uD574\uBCF4\uC138\uC694.`
+      );
+    }
+    const checkScorePairs = data.filter((d) => {
+      var _a;
+      return ((_a = d.conditionScore) != null ? _a : 0) > 0;
+    }).map((d) => {
+      var _a;
+      return { checks: d.checkedCount, score: (_a = d.conditionScore) != null ? _a : 0 };
+    });
+    if (checkScorePairs.length >= 4) {
+      const high = checkScorePairs.filter((p) => p.checks >= Math.ceil(checkScorePairs.reduce((s, p2) => s + p2.checks, 0) / checkScorePairs.length));
+      const low = checkScorePairs.filter((p) => p.checks < Math.ceil(checkScorePairs.reduce((s, p2) => s + p2.checks, 0) / checkScorePairs.length));
+      if (high.length > 0 && low.length > 0) {
+        const highAvg = high.reduce((s, p) => s + p.score, 0) / high.length;
+        const lowAvg = low.reduce((s, p) => s + p.score, 0) / low.length;
+        if (highAvg - lowAvg > 0.5) {
+          lines.push(`\uCCB4\uD06C\uB97C \uB9CE\uC774 \uD560\uC218\uB85D \uCEE8\uB514\uC158\uC774 \uC88B\uC544\uC694. \uCCB4\uD06C \uB9CE\uC740 \uB0A0 \uD3C9\uADE0 ${highAvg.toFixed(1)}\uC810 vs \uC801\uC740 \uB0A0 ${lowAvg.toFixed(1)}\uC810.`);
+        }
+      }
+    }
+    if (lines.length === 0)
+      return;
+    const box = container.createDiv("ct-stat-insight-box");
+    box.createEl("h4", { text: "\uD1B5\uACC4 \uC778\uC0AC\uC774\uD2B8", cls: "ct-stat-insight-title" });
+    const ul = box.createEl("ul", { cls: "ct-stat-insight-list" });
+    lines.forEach((l) => ul.createEl("li", { text: l }));
+  }
 };
 var DailyNoteParser = class {
   constructor(app, settings) {
@@ -455,90 +601,6 @@ var DailyNoteParser = class {
     return content.split("\n").filter((l) => !l.match(/^[-*]\s+\[/)).join("\n").trim();
   }
 };
-var ClaudeAnalyzer = class {
-  constructor(apiKey) {
-    this.apiKey = apiKey;
-  }
-  async inferConditionScore(freeText) {
-    var _a;
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": this.apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 150,
-        messages: [{
-          role: "user",
-          content: `\uB2E4\uC74C \uC77C\uAE30\uB97C \uC77D\uACE0 \uADF8\uB0A0\uC758 \uC804\uBC18\uC801 \uCEE8\uB514\uC158\uC744 1~10\uC810\uC73C\uB85C \uD3C9\uAC00\uD574\uC8FC\uC138\uC694.
-(10=\uB9E4\uC6B0\uC88B\uC74C, 5=\uBCF4\uD1B5, 1=\uB9E4\uC6B0\uB098\uC068)
-
-\uC77C\uAE30:
-${freeText.substring(0, 1200)}
-
-JSON\uB9CC \uC751\uB2F5: {"score": \uC22B\uC790, "reason": "\uD55C\uC904\uC774\uC720"}`
-        }]
-      })
-    });
-    if (!resp.ok)
-      throw new Error(`API ${resp.status}`);
-    const data = await resp.json();
-    const text = data.content[0].text.trim();
-    try {
-      const jsonMatch = text.match(/\{[^}]+\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          score: Math.min(10, Math.max(1, Number(parsed.score))),
-          reason: String((_a = parsed.reason) != null ? _a : "")
-        };
-      }
-    } catch (e) {
-    }
-    const scoreMatch = text.match(/(\d+(?:\.\d+)?)/);
-    if (scoreMatch)
-      return { score: parseFloat(scoreMatch[1]), reason: "" };
-    throw new Error("\uC751\uB2F5 \uD30C\uC2F1 \uC2E4\uD328");
-  }
-  async generateInsights(data) {
-    const summary = data.map((d) => ({
-      \uB0A0\uC9DC: d.date,
-      \uCEE8\uB514\uC158\uC810\uC218: d.conditionScore,
-      \uCCB4\uD06C\uD56D\uBAA9: d.checkboxItems.filter((cb) => cb.checked).map((cb) => cb.label),
-      \uBBF8\uCCB4\uD06C\uD56D\uBAA9: d.checkboxItems.filter((cb) => !cb.checked).map((cb) => cb.label)
-    }));
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": this.apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1e3,
-        messages: [{
-          role: "user",
-          content: `\uC544\uB798\uB294 \uB098\uC758 \uC77C\uBCC4 \uCEE8\uB514\uC158 \uB370\uC774\uD130\uC785\uB2C8\uB2E4. \uBD84\uC11D\uD574\uC11C \uCE5C\uADFC\uD558\uAC8C \uD55C\uAD6D\uC5B4\uB85C \uC54C\uB824\uC8FC\uC138\uC694:
-
-1. \uC5B4\uB5A4 \uD56D\uBAA9\uC774 \uCEE8\uB514\uC158\uC5D0 \uAC00\uC7A5 \uD070 \uC601\uD5A5\uC744 \uC8FC\uB294\uC9C0
-2. \uBC1C\uACAC\uD55C \uD328\uD134/\uD2B8\uB80C\uB4DC
-3. \uB0B4\uAC00 \uBAB0\uB790\uC744 \uB9CC\uD55C \uC778\uC0AC\uC774\uD2B8
-4. \uC2E4\uC9C8\uC801\uC778 \uC870\uC5B8
-
-\uB370\uC774\uD130: ${JSON.stringify(summary)}`
-        }]
-      })
-    });
-    if (!resp.ok)
-      throw new Error(`API ${resp.status}`);
-    const result = await resp.json();
-    return result.content[0].text;
-  }
-};
 var TrackerSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -548,10 +610,6 @@ var TrackerSettingTab = class extends import_obsidian.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Daily Condition Tracker \uC124\uC815" });
-    new import_obsidian.Setting(containerEl).setName("Anthropic API \uD0A4").setDesc("Claude API \uD638\uCD9C\uC5D0 \uC0AC\uC6A9\uB429\uB2C8\uB2E4 (sk-ant-...)").addText((t) => t.setPlaceholder("sk-ant-...").setValue(this.plugin.settings.anthropicApiKey).onChange(async (v) => {
-      this.plugin.settings.anthropicApiKey = v;
-      await this.plugin.saveSettings();
-    }));
     new import_obsidian.Setting(containerEl).setName("\uB370\uC77C\uB9AC\uB178\uD2B8 \uD3F4\uB354").setDesc("\uB370\uC77C\uB9AC\uB178\uD2B8\uAC00 \uC788\uB294 \uD3F4\uB354 \uACBD\uB85C (\uBE44\uC6CC\uB450\uBA74 \uC804\uCCB4 \uBCFC\uD2B8 \uAC80\uC0C9)").addText((t) => t.setPlaceholder("Daily Notes").setValue(this.plugin.settings.dailyNotesFolder).onChange(async (v) => {
       this.plugin.settings.dailyNotesFolder = v;
       await this.plugin.saveSettings();

@@ -278,3 +278,29 @@
   padding: 24px;
   font-size: 0.9em;
 }
+
+.ct-stat-insight-box {
+  margin-top: 14px;
+  padding: 12px 16px;
+  background: var(--background-secondary);
+  border-radius: 8px;
+  border-left: 3px solid var(--color-blue, #2196F3);
+}
+
+.ct-stat-insight-title {
+  margin: 0 0 8px 0;
+  font-size: 0.9em;
+  color: var(--text-normal);
+}
+
+.ct-stat-insight-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.ct-stat-insight-list li {
+  font-size: 0.85em;
+  line-height: 1.6;
+  color: var(--text-normal);
+  margin-bottom: 4px;
+}

@@ -17,7 +17,6 @@ interface CheckboxItem {
 }
 
 interface TrackerSettings {
-  anthropicApiKey: string;
   dailyNotesFolder: string;
   conditionSectionHeader: string;
   lastAutoAnalyze?: string;
@@ -29,7 +28,6 @@ interface CachedStorage {
 }
 
 const DEFAULT_SETTINGS: TrackerSettings = {
-  anthropicApiKey: '',
   dailyNotesFolder: '',
   conditionSectionHeader: '컨디션',
 };
@@ -52,7 +50,7 @@ export default class DailyConditionTracker extends Plugin {
     });
     this.addSettingTab(new TrackerSettingTab(this.app, this));
 
-    // 1분마다 자동 분석 체크
+    // 1분마다 오전 5시 자동 분석 체크
     this.registerInterval(window.setInterval(() => this.checkAutoAnalyze(), 60 * 1000));
     this.checkAutoAnalyze();
   }
@@ -60,26 +58,17 @@ export default class DailyConditionTracker extends Plugin {
   async checkAutoAnalyze() {
     const now = new Date();
     const today = this.formatDate(now);
-
-    // 오전 5시이고 오늘 아직 자동분석 안 했으면
     if (now.getHours() === 5 && this.settings.lastAutoAnalyze !== today) {
       this.settings.lastAutoAnalyze = today;
-      await this.saveData(this.buildSaveData());
-
-      // 어제 날짜 노트 분석
       const yesterday = new Date(now);
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayStr = this.formatDate(yesterday);
-
-      if (!this.cachedData.has(yesterdayStr) && this.settings.anthropicApiKey) {
+      if (!this.cachedData.has(yesterdayStr)) {
         new Notice('컨디션 트래커: 어제 노트를 분석합니다...');
-        try {
-          await this.analyzeDate(yesterdayStr);
-          new Notice('컨디션 트래커: 어제 컨디션 분석 완료!');
-        } catch (e) {
-          console.error('Auto analyze failed:', e);
-        }
+        await this.analyzeDate(yesterdayStr);
+        new Notice('컨디션 트래커: 분석 완료!');
       }
+      await this.saveData(this.buildSaveData());
     }
   }
 
@@ -87,20 +76,15 @@ export default class DailyConditionTracker extends Plugin {
     const parser = new DailyNoteParser(this.app, this.settings);
     const file = parser.findFileByDate(dateStr);
     if (!file) return;
-
     const noteData = await parser.parseNote(file, dateStr);
     if (!noteData) return;
-
-    if (noteData.freeText.length > 10 && this.settings.anthropicApiKey) {
-      const analyzer = new ClaudeAnalyzer(this.settings.anthropicApiKey);
-      const result = await analyzer.inferConditionScore(noteData.freeText);
+    if (noteData.freeText.length > 5) {
+      const result = KeywordScorer.score(noteData.freeText);
       noteData.conditionScore = result.score;
       noteData.scoreReason = result.reason;
       noteData.analyzedAt = Date.now();
     }
-
     this.cachedData.set(dateStr, noteData);
-    await this.saveData(this.buildSaveData());
   }
 
   buildSaveData(): CachedStorage {
@@ -139,6 +123,54 @@ export default class DailyConditionTracker extends Plugin {
   }
 }
 
+// ===== KEYWORD SCORER (API 불필요, 완전 로컬) =====
+const POSITIVE_STRONG = ['최고', '완벽', '넘치', '너무좋', '엄청좋', '기분최고', '컨디션최고'];
+const POSITIVE = [
+  '좋다','좋아','좋음','좋았','활기','상쾌','기분좋','에너지','즐겁','행복',
+  '잘됐','편안','충분','괜찮','산뜻','개운','잘잤','잘먹','힘있','활발',
+  '맑다','맑음','상큼','수월','원활','가뿐','상태좋','몸좋','컨디션좋',
+  '의욕','집중잘','잘풀','생산적','활력','열정','뿌듯','성취',
+];
+const NEGATIVE_STRONG = ['최악','너무힘','너무피곤','심하게아','죽겠','쓰러'];
+const NEGATIVE = [
+  '피곤','힘들','나쁘다','아프다','무기력','졸리다','졸림','힘없','지침',
+  '두통','스트레스','불안','우울','못잤','못먹','찌뿌','뻐근','무겁',
+  '지루','집중안','흐리멍','몸무거','컨디션나','상태안','몸안좋',
+  '의욕없','짜증','답답','무너','번아웃','번아','몸살','감기','열이',
+];
+
+class KeywordScorer {
+  static score(text: string): { score: number; reason: string } {
+    const t = text.replace(/\s/g, '');
+    let points = 0;
+    const hits: string[] = [];
+
+    for (const w of POSITIVE_STRONG) {
+      if (t.includes(w)) { points += 2; hits.push(`+${w}`); }
+    }
+    for (const w of POSITIVE) {
+      if (t.includes(w)) { points += 1; hits.push(`+${w}`); }
+    }
+    for (const w of NEGATIVE_STRONG) {
+      if (t.includes(w)) { points -= 2; hits.push(`-${w}`); }
+    }
+    for (const w of NEGATIVE) {
+      if (t.includes(w)) { points -= 1; hits.push(`-${w}`); }
+    }
+
+    // base 5.5, clamp 1~10, step 0.5
+    const raw = 5.5 + points * 0.5;
+    const clamped = Math.min(10, Math.max(1, raw));
+    const score = Math.round(clamped * 2) / 2;
+
+    const reason = hits.length > 0
+      ? hits.slice(0, 4).join(', ')
+      : '키워드 없음 (중립)';
+
+    return { score, reason };
+  }
+}
+
 // ===== TRACKER VIEW =====
 type ViewMode = 'week' | 'month' | 'year';
 
@@ -146,7 +178,6 @@ class TrackerView extends ItemView {
   plugin: DailyConditionTracker;
   currentView: ViewMode = 'week';
   isAnalyzing = false;
-  aiInsightText = '';
 
   constructor(leaf: WorkspaceLeaf, plugin: DailyConditionTracker) {
     super(leaf);
@@ -217,42 +248,18 @@ class TrackerView extends ItemView {
 
     if (withScores.length >= 3) {
       this.renderCorrelations(insightsArea, withScores);
-
-      if (this.aiInsightText) {
-        const aiDiv = insightsArea.createDiv('ct-ai-box');
-        aiDiv.createEl('h4', { text: '🤖 AI 종합 인사이트' });
-        aiDiv.createEl('p', { text: this.aiInsightText });
-      } else if (this.plugin.settings.anthropicApiKey && withScores.length >= 5) {
-        const aiBtn = insightsArea.createEl('button', { text: 'AI 인사이트 생성', cls: 'ct-btn-secondary' });
-        aiBtn.onclick = async () => {
-          aiBtn.setText('분석 중...');
-          aiBtn.disabled = true;
-          try {
-            const analyzer = new ClaudeAnalyzer(this.plugin.settings.anthropicApiKey);
-            this.aiInsightText = await analyzer.generateInsights(withScores);
-            await this.render();
-          } catch (e) {
-            aiBtn.setText('생성 실패 - 재시도');
-            aiBtn.disabled = false;
-          }
-        };
-      }
+      this.renderStatInsights(insightsArea, withScores);
     } else {
       insightsArea.createEl('p', { text: '인사이트를 표시하려면 3일 이상의 분석 데이터가 필요합니다.', cls: 'ct-empty' });
     }
   }
 
-  async runAnalysis(container: HTMLElement) {
-    if (!this.plugin.settings.anthropicApiKey) {
-      new Notice('설정에서 Anthropic API 키를 먼저 입력해주세요.');
-      return;
-    }
+  async runAnalysis(_container: HTMLElement) {
     this.isAnalyzing = true;
     await this.render();
 
     try {
       const parser = new DailyNoteParser(this.app, this.plugin.settings);
-      const analyzer = new ClaudeAnalyzer(this.plugin.settings.anthropicApiKey);
       const { start, end } = this.getDateRange();
       const files = parser.getDailyNoteFiles(start, end);
 
@@ -260,27 +267,22 @@ class TrackerView extends ItemView {
       for (const file of files) {
         const dateStr = parser.getDateFromFile(file);
         if (!dateStr) continue;
-        if (this.plugin.cachedData.has(dateStr)) { count++; continue; }
 
         const noteData = await parser.parseNote(file, dateStr);
         if (!noteData) continue;
 
-        if (noteData.freeText.length > 10) {
-          try {
-            const result = await analyzer.inferConditionScore(noteData.freeText);
-            noteData.conditionScore = result.score;
-            noteData.scoreReason = result.reason;
-            noteData.analyzedAt = Date.now();
-          } catch (e) {
-            console.error('Score inference failed for', dateStr, e);
-          }
+        if (noteData.freeText.length > 5) {
+          const result = KeywordScorer.score(noteData.freeText);
+          noteData.conditionScore = result.score;
+          noteData.scoreReason = result.reason;
+          noteData.analyzedAt = Date.now();
         }
         this.plugin.cachedData.set(dateStr, noteData);
         count++;
       }
 
       await this.plugin.saveData(this.plugin.buildSaveData());
-      new Notice(`${count}개 노트 분석 완료`);
+      new Notice(`${count}개 노트 분석 완료 (로컬)`);
     } catch (e) {
       new Notice(`분석 실패: ${(e as Error).message}`);
     } finally {
@@ -425,6 +427,74 @@ class TrackerView extends ItemView {
       card.createDiv({ cls: 'ct-corr-detail', text: `체크:${c.checkedAvg.toFixed(1)} 미체크:${c.uncheckedAvg.toFixed(1)}` });
     });
   }
+
+  renderStatInsights(container: HTMLElement, data: DailyNoteData[]) {
+    if (data.length < 5) return;
+
+    const allLabels = new Set<string>();
+    data.forEach(d => d.checkboxItems.forEach(cb => allLabels.add(cb.label)));
+
+    const correlations: { label: string; diff: number; checkedAvg: number }[] = [];
+    allLabels.forEach(label => {
+      const checked = data.filter(d => d.checkboxItems.some(cb => cb.label === label && cb.checked));
+      const unchecked = data.filter(d => d.checkboxItems.some(cb => cb.label === label && !cb.checked));
+      if (checked.length < 2 || unchecked.length < 2) return;
+      const checkedAvg = checked.reduce((s, d) => s + (d.conditionScore ?? 0), 0) / checked.length;
+      const uncheckedAvg = unchecked.reduce((s, d) => s + (d.conditionScore ?? 0), 0) / unchecked.length;
+      correlations.push({ label, diff: checkedAvg - uncheckedAvg, checkedAvg });
+    });
+    correlations.sort((a, b) => b.diff - a.diff);
+
+    // 점수 추세
+    const scores = data.map(d => d.conditionScore ?? 0).filter(s => s > 0);
+    const recentHalf = scores.slice(Math.floor(scores.length / 2));
+    const earlyHalf = scores.slice(0, Math.floor(scores.length / 2));
+    const recentAvg = recentHalf.reduce((s, v) => s + v, 0) / (recentHalf.length || 1);
+    const earlyAvg = earlyHalf.reduce((s, v) => s + v, 0) / (earlyHalf.length || 1);
+    const trend = recentAvg - earlyAvg;
+
+    const lines: string[] = [];
+
+    if (correlations.length > 0) {
+      const top = correlations[0];
+      if (top.diff > 0.5) {
+        lines.push(`"${top.label}" 항목이 체크됐을 때 컨디션이 평균 ${top.diff.toFixed(1)}점 높아요. 가장 핵심 습관입니다.`);
+      }
+      const bottom = correlations[correlations.length - 1];
+      if (bottom.diff < -0.5) {
+        lines.push(`"${bottom.label}"이 빠진 날은 컨디션이 ${Math.abs(bottom.diff).toFixed(1)}점 낮아요. 빠트리지 마세요.`);
+      }
+    }
+
+    if (Math.abs(trend) > 0.3) {
+      lines.push(trend > 0
+        ? `최근 컨디션이 상승 추세예요 (+${trend.toFixed(1)}). 잘 하고 있어요!`
+        : `최근 컨디션이 하락 추세예요 (${trend.toFixed(1)}). 루틴을 점검해보세요.`
+      );
+    }
+
+    // 체크 개수와 점수 상관
+    const checkScorePairs = data.filter(d => (d.conditionScore ?? 0) > 0)
+      .map(d => ({ checks: d.checkedCount, score: d.conditionScore ?? 0 }));
+    if (checkScorePairs.length >= 4) {
+      const high = checkScorePairs.filter(p => p.checks >= Math.ceil(checkScorePairs.reduce((s, p) => s + p.checks, 0) / checkScorePairs.length));
+      const low = checkScorePairs.filter(p => p.checks < Math.ceil(checkScorePairs.reduce((s, p) => s + p.checks, 0) / checkScorePairs.length));
+      if (high.length > 0 && low.length > 0) {
+        const highAvg = high.reduce((s, p) => s + p.score, 0) / high.length;
+        const lowAvg = low.reduce((s, p) => s + p.score, 0) / low.length;
+        if (highAvg - lowAvg > 0.5) {
+          lines.push(`체크를 많이 할수록 컨디션이 좋아요. 체크 많은 날 평균 ${highAvg.toFixed(1)}점 vs 적은 날 ${lowAvg.toFixed(1)}점.`);
+        }
+      }
+    }
+
+    if (lines.length === 0) return;
+
+    const box = container.createDiv('ct-stat-insight-box');
+    box.createEl('h4', { text: '통계 인사이트', cls: 'ct-stat-insight-title' });
+    const ul = box.createEl('ul', { cls: 'ct-stat-insight-list' });
+    lines.forEach(l => ul.createEl('li', { text: l }));
+  }
 }
 
 // ===== DAILY NOTE PARSER =====
@@ -498,94 +568,6 @@ class DailyNoteParser {
   }
 }
 
-// ===== CLAUDE ANALYZER =====
-class ClaudeAnalyzer {
-  constructor(private apiKey: string) {}
-
-  async inferConditionScore(freeText: string): Promise<{ score: number; reason: string }> {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 150,
-        messages: [{
-          role: 'user',
-          content: `다음 일기를 읽고 그날의 전반적 컨디션을 1~10점으로 평가해주세요.
-(10=매우좋음, 5=보통, 1=매우나쁨)
-
-일기:
-${freeText.substring(0, 1200)}
-
-JSON만 응답: {"score": 숫자, "reason": "한줄이유"}`,
-        }],
-      }),
-    });
-
-    if (!resp.ok) throw new Error(`API ${resp.status}`);
-    const data = await resp.json() as { content: { text: string }[] };
-    const text = data.content[0].text.trim();
-
-    try {
-      // Extract JSON from response
-      const jsonMatch = text.match(/\{[^}]+\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          score: Math.min(10, Math.max(1, Number(parsed.score))),
-          reason: String(parsed.reason ?? ''),
-        };
-      }
-    } catch {
-      // fall through to score-only parsing
-    }
-    const scoreMatch = text.match(/(\d+(?:\.\d+)?)/);
-    if (scoreMatch) return { score: parseFloat(scoreMatch[1]), reason: '' };
-    throw new Error('응답 파싱 실패');
-  }
-
-  async generateInsights(data: DailyNoteData[]): Promise<string> {
-    const summary = data.map(d => ({
-      날짜: d.date,
-      컨디션점수: d.conditionScore,
-      체크항목: d.checkboxItems.filter(cb => cb.checked).map(cb => cb.label),
-      미체크항목: d.checkboxItems.filter(cb => !cb.checked).map(cb => cb.label),
-    }));
-
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: `아래는 나의 일별 컨디션 데이터입니다. 분석해서 친근하게 한국어로 알려주세요:
-
-1. 어떤 항목이 컨디션에 가장 큰 영향을 주는지
-2. 발견한 패턴/트렌드
-3. 내가 몰랐을 만한 인사이트
-4. 실질적인 조언
-
-데이터: ${JSON.stringify(summary)}`,
-        }],
-      }),
-    });
-
-    if (!resp.ok) throw new Error(`API ${resp.status}`);
-    const result = await resp.json() as { content: { text: string }[] };
-    return result.content[0].text;
-  }
-}
-
 // ===== SETTINGS TAB =====
 class TrackerSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: DailyConditionTracker) {
@@ -596,17 +578,6 @@ class TrackerSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl('h2', { text: 'Daily Condition Tracker 설정' });
-
-    new Setting(containerEl)
-      .setName('Anthropic API 키')
-      .setDesc('Claude API 호출에 사용됩니다 (sk-ant-...)')
-      .addText(t => t
-        .setPlaceholder('sk-ant-...')
-        .setValue(this.plugin.settings.anthropicApiKey)
-        .onChange(async v => {
-          this.plugin.settings.anthropicApiKey = v;
-          await this.plugin.saveSettings();
-        }));
 
     new Setting(containerEl)
       .setName('데일리노트 폴더')
