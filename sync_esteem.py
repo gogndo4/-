@@ -10,6 +10,7 @@ import sys
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
+from dashboard import parse_entries, generate_dashboard
 
 SCRIPT_DIR = Path(__file__).parent
 LOG_FILE = SCRIPT_DIR / "sync_esteem.log"
@@ -184,6 +185,13 @@ def main():
         sys.exit(1)
 
     append_to_section(items, yesterday, target_path, target_section, daily_fmt, output_fmt)
+
+    # 대시보드 업데이트
+    dashboard_name = notes.get("dashboard_note", "자존 대시보드.md").strip()
+    dashboard_path = target_path.parent / dashboard_name
+    entries = parse_entries(target_path, target_section)
+    generate_dashboard(entries, dashboard_path, datetime.now())
+    log.info("[OK] 대시보드 업데이트 완료: %s", dashboard_path)
 
 
 if __name__ == "__main__":
