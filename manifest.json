@@ -1,0 +1,9 @@
+{
+  "id": "daily-condition-tracker",
+  "name": "Daily Condition Tracker",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Track daily condition from daily note checkboxes and journal entries using Claude AI",
+  "author": "gogndo4",
+  "isDesktopOnly": false
+}
