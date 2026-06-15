@@ -431,85 +431,173 @@ class TrackerView extends ItemView {
     });
   }
 
-  renderCorrelations(container: HTMLElement, data: DailyNoteData[]) {
+  // 항목별 통계 계산 (공통 헬퍼)
+  buildItemStats(data: DailyNoteData[]) {
     const allLabels = new Set<string>();
     data.forEach(d => d.checkboxItems.forEach(cb => allLabels.add(cb.label)));
-    const corrs: { label: string; checkedAvg: number; uncheckedAvg: number; diff: number }[] = [];
+
+    const stats: {
+      label: string;
+      diff: number;
+      checkedAvg: number;
+      uncheckedAvg: number;
+      checkRate: number;
+      streak: number;   // 최근 연속 체크 일수
+      missed: number;   // 최근 연속 미체크 일수
+      hasEnoughData: boolean;
+    }[] = [];
+
+    const sorted = [...data].sort((a, b) => b.date.localeCompare(a.date));
+
     allLabels.forEach(label => {
-      const on = data.filter(d => d.checkboxItems.some(cb => cb.label === label && cb.checked));
-      const off = data.filter(d => d.checkboxItems.some(cb => cb.label === label && !cb.checked));
-      if (on.length < 2 || off.length < 2) return;
-      const onAvg = on.reduce((s, d) => s + (d.conditionScore ?? 0), 0) / on.length;
-      const offAvg = off.reduce((s, d) => s + (d.conditionScore ?? 0), 0) / off.length;
-      corrs.push({ label, checkedAvg: onAvg, uncheckedAvg: offAvg, diff: onAvg - offAvg });
+      const withItem = sorted.filter(d => d.checkboxItems.some(cb => cb.label === label));
+      const on  = withItem.filter(d => d.checkboxItems.some(cb => cb.label === label && cb.checked));
+      const off = withItem.filter(d => d.checkboxItems.some(cb => cb.label === label && !cb.checked));
+
+      let streak = 0, missed = 0, cS = true, cM = true;
+      for (const d of withItem) {
+        const isOn = d.checkboxItems.some(cb => cb.label === label && cb.checked);
+        if (cS) { if (isOn) streak++; else cS = false; }
+        if (cM) { if (!isOn) missed++; else cM = false; }
+      }
+
+      const onAvg  = on.length  > 0 ? on.reduce((s, d)  => s + (d.conditionScore ?? 0), 0) / on.length  : 0;
+      const offAvg = off.length > 0 ? off.reduce((s, d) => s + (d.conditionScore ?? 0), 0) / off.length : 0;
+
+      stats.push({
+        label,
+        diff: on.length > 0 && off.length > 0 ? onAvg - offAvg : 0,
+        checkedAvg: onAvg,
+        uncheckedAvg: offAvg,
+        checkRate: withItem.length > 0 ? on.length / withItem.length : 0,
+        streak,
+        missed,
+        hasEnoughData: on.length >= 2 && off.length >= 2,
+      });
     });
-    corrs.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
-    if (corrs.length === 0) {
+
+    return stats;
+  }
+
+  renderCorrelations(container: HTMLElement, data: DailyNoteData[]) {
+    const stats = this.buildItemStats(data).filter(s => s.hasEnoughData);
+    if (stats.length === 0) {
       container.createEl('p', { text: '항목별 비교에 데이터가 더 필요해요.', cls: 'ct-empty' });
       return;
     }
-    const grid = container.createDiv('ct-corr-grid');
-    corrs.slice(0, 8).forEach(c => {
-      const card = grid.createDiv(`ct-corr-card ${c.diff >= 0 ? 'ct-corr-pos' : 'ct-corr-neg'}`);
-      card.createDiv({ cls: 'ct-corr-label', text: c.label });
-      card.createDiv({ cls: 'ct-corr-diff', text: `${c.diff >= 0 ? '+' : ''}${c.diff.toFixed(1)}` });
-      card.createDiv({ cls: 'ct-corr-detail', text: `체크:${c.checkedAvg.toFixed(1)} 미체크:${c.uncheckedAvg.toFixed(1)}` });
+
+    container.createEl('h4', { text: '항목별 컨디션 영향도', cls: 'ct-impact-title' });
+
+    const tiers = [
+      { key: 'critical', label: '핵심 습관',       sub: '없으면 컨디션이 크게 떨어져요', items: stats.filter(s => s.diff >= 1.5) },
+      { key: 'good',     label: '도움이 되는 습관', sub: '있을 때 더 좋아요',            items: stats.filter(s => s.diff >= 0.4 && s.diff < 1.5) },
+      { key: 'neutral',  label: '영향 낮음',         sub: '컨디션과 연관이 적어요',       items: stats.filter(s => Math.abs(s.diff) < 0.4) },
+      { key: 'bad',      label: '피하면 좋은 것',    sub: '체크할수록 컨디션이 낮아요',   items: stats.filter(s => s.diff < -0.4) },
+    ];
+
+    const maxDiff = Math.max(...stats.map(s => Math.abs(s.diff)), 1);
+
+    tiers.forEach(tier => {
+      if (tier.items.length === 0) return;
+      const sec = container.createDiv(`ct-tier ct-tier--${tier.key}`);
+      const hdr = sec.createDiv('ct-tier-hdr');
+      hdr.createEl('span', { text: tier.label, cls: 'ct-tier-name' });
+      hdr.createEl('span', { text: tier.sub,   cls: 'ct-tier-sub'  });
+
+      tier.items.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).forEach(item => {
+        const row = sec.createDiv('ct-impact-row');
+
+        // 왼쪽: 이름 + 뱃지
+        const left = row.createDiv('ct-impact-left');
+        left.createEl('span', { text: item.label, cls: 'ct-impact-name' });
+        if (item.missed >= 3)
+          left.createEl('span', { text: `${item.missed}일 째 미체크`, cls: 'ct-badge ct-badge--warn' });
+        else if (item.streak >= 3)
+          left.createEl('span', { text: `${item.streak}일 연속`, cls: 'ct-badge ct-badge--good' });
+
+        // 오른쪽: 바 + 수치
+        const right = row.createDiv('ct-impact-right');
+        const barWrap = right.createDiv('ct-impact-bar-track');
+        const bar = barWrap.createDiv(`ct-impact-bar ${item.diff >= 0 ? 'ct-impact-bar--pos' : 'ct-impact-bar--neg'}`);
+        bar.style.width = `${Math.round((Math.abs(item.diff) / maxDiff) * 100)}%`;
+
+        const meta = right.createDiv('ct-impact-meta');
+        meta.createEl('span', { cls: 'ct-impact-diff', text: `${item.diff >= 0 ? '+' : ''}${item.diff.toFixed(1)}점` });
+        meta.createEl('span', { cls: 'ct-impact-rate', text: `체크율 ${Math.round(item.checkRate * 100)}%` });
+      });
     });
   }
 
   renderStatInsights(container: HTMLElement, data: DailyNoteData[]) {
     if (data.length < 5) return;
-    const allLabels = new Set<string>();
-    data.forEach(d => d.checkboxItems.forEach(cb => allLabels.add(cb.label)));
-    const corrs: { label: string; diff: number }[] = [];
-    allLabels.forEach(label => {
-      const on = data.filter(d => d.checkboxItems.some(cb => cb.label === label && cb.checked));
-      const off = data.filter(d => d.checkboxItems.some(cb => cb.label === label && !cb.checked));
-      if (on.length < 2 || off.length < 2) return;
-      const onAvg = on.reduce((s, d) => s + (d.conditionScore ?? 0), 0) / on.length;
-      const offAvg = off.reduce((s, d) => s + (d.conditionScore ?? 0), 0) / off.length;
-      corrs.push({ label, diff: onAvg - offAvg });
-    });
-    corrs.sort((a, b) => b.diff - a.diff);
 
+    const stats = this.buildItemStats(data).filter(s => s.hasEnoughData);
     const scores = data.map(d => d.conditionScore ?? 0).filter(s => s > 0);
     const mid = Math.floor(scores.length / 2);
     const recentAvg = scores.slice(mid).reduce((s, v) => s + v, 0) / Math.max(scores.length - mid, 1);
-    const earlyAvg = scores.slice(0, mid).reduce((s, v) => s + v, 0) / Math.max(mid, 1);
+    const earlyAvg  = scores.slice(0, mid).reduce((s, v) => s + v, 0) / Math.max(mid, 1);
     const trend = recentAvg - earlyAvg;
 
-    const lines: string[] = [];
+    const sorted = [...stats].sort((a, b) => b.diff - a.diff);
+    const lacking   = sorted.filter(s => s.diff > 0.5 && s.missed >= 2);
+    const goingWell = sorted.filter(s => s.diff > 0.3 && (s.streak >= 3 || s.checkRate > 0.65));
+    const topItem   = sorted[0];
 
-    if (corrs.length > 0 && corrs[0].diff > 0.5)
-      lines.push(`"${corrs[0].label}"이 가장 핵심 항목이에요. 체크 시 컨디션이 평균 ${corrs[0].diff.toFixed(1)}점 높아요.`);
+    const wrap = container.createDiv('ct-narrative-wrap');
 
-    const worst = corrs[corrs.length - 1];
-    if (worst && worst.diff < -0.5)
-      lines.push(`"${worst.label}"이 빠진 날은 컨디션이 ${Math.abs(worst.diff).toFixed(1)}점 낮아요. 빠트리지 마세요.`);
+    // ── 카드 1: 최근 부족한 것 ──
+    const c1 = wrap.createDiv('ct-narrative-card ct-narrative-card--lack');
+    c1.createDiv({ cls: 'ct-narrative-icon', text: '🔴' });
+    c1.createEl('h4', { cls: 'ct-narrative-heading', text: '최근 부족한 것' });
+    const b1 = c1.createDiv('ct-narrative-body');
 
-    if (Math.abs(trend) > 0.3)
-      lines.push(trend > 0
-        ? `최근 컨디션이 상승 중 (+${trend.toFixed(1)}). 잘 하고 있어요!`
-        : `최근 컨디션이 하락 중 (${trend.toFixed(1)}). 루틴을 점검해봐요.`);
-
-    const pairs = data.filter(d => (d.conditionScore ?? 0) > 0);
-    if (pairs.length >= 4) {
-      const avgChecks = pairs.reduce((s, d) => s + d.checkedCount, 0) / pairs.length;
-      const hi = pairs.filter(d => d.checkedCount >= avgChecks);
-      const lo = pairs.filter(d => d.checkedCount < avgChecks);
-      if (hi.length > 0 && lo.length > 0) {
-        const hiAvg = hi.reduce((s, d) => s + (d.conditionScore ?? 0), 0) / hi.length;
-        const loAvg = lo.reduce((s, d) => s + (d.conditionScore ?? 0), 0) / lo.length;
-        if (hiAvg - loAvg > 0.5)
-          lines.push(`체크를 많이 할수록 컨디션이 좋아요. 많은 날 ${hiAvg.toFixed(1)}점 vs 적은 날 ${loAvg.toFixed(1)}점.`);
-      }
+    if (lacking.length === 0 && trend >= -0.3) {
+      b1.createEl('p', { text: '특별히 빠진 항목이 없어요. 균형 있게 잘 유지하고 있어요.' });
+    } else {
+      lacking.slice(0, 2).forEach(s => {
+        b1.createEl('p', { text: `"${s.label}"이 ${s.missed}일 연속 빠져있어요. 없는 날 컨디션이 평균 ${s.diff.toFixed(1)}점 낮아요.` });
+      });
+      if (trend < -0.5)
+        b1.createEl('p', { text: `전반적으로 컨디션이 이전보다 ${Math.abs(trend).toFixed(1)}점 낮아졌어요.` });
     }
 
-    if (lines.length === 0) return;
-    const box = container.createDiv('ct-stat-insight-box');
-    box.createEl('h4', { text: '통계 인사이트', cls: 'ct-stat-insight-title' });
-    const ul = box.createEl('ul', { cls: 'ct-stat-insight-list' });
-    lines.forEach(l => ul.createEl('li', { text: l }));
+    // ── 카드 2: 잘 하고 있는 것 ──
+    const c2 = wrap.createDiv('ct-narrative-card ct-narrative-card--good');
+    c2.createDiv({ cls: 'ct-narrative-icon', text: '✅' });
+    c2.createEl('h4', { cls: 'ct-narrative-heading', text: '잘 하고 있는 것' });
+    const b2 = c2.createDiv('ct-narrative-body');
+
+    if (goingWell.length === 0) {
+      b2.createEl('p', { text: '아직 꾸준한 항목이 많지 않아요. 데이터가 더 쌓이면 보여요.' });
+    } else {
+      goingWell.slice(0, 2).forEach(s => {
+        if (s.streak >= 3)
+          b2.createEl('p', { text: `"${s.label}"을 ${s.streak}일 연속 챙기고 있어요! 컨디션에 ${s.diff.toFixed(1)}점 기여해요.` });
+        else
+          b2.createEl('p', { text: `"${s.label}" 체크율이 ${Math.round(s.checkRate * 100)}%로 꾸준해요. 컨디션에 ${s.diff.toFixed(1)}점 영향을 줘요.` });
+      });
+      if (trend > 0.5)
+        b2.createEl('p', { text: `전반적으로 컨디션이 이전보다 ${trend.toFixed(1)}점 올라가는 중이에요.` });
+    }
+
+    // ── 카드 3: 앞으로 어떻게 ──
+    const c3 = wrap.createDiv('ct-narrative-card ct-narrative-card--advice');
+    c3.createDiv({ cls: 'ct-narrative-icon', text: '💡' });
+    c3.createEl('h4', { cls: 'ct-narrative-heading', text: '이렇게 해보세요' });
+    const b3 = c3.createDiv('ct-narrative-body');
+
+    const advLines: string[] = [];
+    if (lacking.length > 0)
+      advLines.push(`오늘부터 "${lacking[0].label}"을 다시 챙겨보세요. 컨디션이 빠르게 회복될 수 있어요.`);
+    if (topItem && topItem.diff >= 1.0)
+      advLines.push(`가장 핵심은 "${topItem.label}"이에요. 다른 게 힘들더라도 이것만은 지켜봐요.`);
+    const lowImpact = stats.filter(s => Math.abs(s.diff) < 0.3);
+    if (lowImpact.length >= 2)
+      advLines.push(`"${lowImpact.slice(0, 2).map(s => s.label).join('", "')}"은 컨디션 영향이 작아요. 에너지를 핵심 항목에 집중해보는 것도 좋아요.`);
+    if (advLines.length === 0)
+      advLines.push('기록을 계속 쌓아가세요. 2주 이상의 데이터가 모이면 훨씬 구체적인 조언을 드릴 수 있어요.');
+
+    advLines.forEach(l => b3.createEl('p', { text: l }));
   }
 }
 

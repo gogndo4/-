@@ -480,60 +480,96 @@ var TrackerView = class extends import_obsidian.ItemView {
       };
     });
   }
-  renderCorrelations(container, data) {
+  // 항목별 통계 계산 (공통 헬퍼)
+  buildItemStats(data) {
     const allLabels = /* @__PURE__ */ new Set();
     data.forEach((d) => d.checkboxItems.forEach((cb) => allLabels.add(cb.label)));
-    const corrs = [];
+    const stats = [];
+    const sorted = [...data].sort((a, b) => b.date.localeCompare(a.date));
     allLabels.forEach((label) => {
-      const on = data.filter((d) => d.checkboxItems.some((cb) => cb.label === label && cb.checked));
-      const off = data.filter((d) => d.checkboxItems.some((cb) => cb.label === label && !cb.checked));
-      if (on.length < 2 || off.length < 2)
-        return;
-      const onAvg = on.reduce((s, d) => {
+      const withItem = sorted.filter((d) => d.checkboxItems.some((cb) => cb.label === label));
+      const on = withItem.filter((d) => d.checkboxItems.some((cb) => cb.label === label && cb.checked));
+      const off = withItem.filter((d) => d.checkboxItems.some((cb) => cb.label === label && !cb.checked));
+      let streak = 0, missed = 0, cS = true, cM = true;
+      for (const d of withItem) {
+        const isOn = d.checkboxItems.some((cb) => cb.label === label && cb.checked);
+        if (cS) {
+          if (isOn)
+            streak++;
+          else
+            cS = false;
+        }
+        if (cM) {
+          if (!isOn)
+            missed++;
+          else
+            cM = false;
+        }
+      }
+      const onAvg = on.length > 0 ? on.reduce((s, d) => {
         var _a;
         return s + ((_a = d.conditionScore) != null ? _a : 0);
-      }, 0) / on.length;
-      const offAvg = off.reduce((s, d) => {
+      }, 0) / on.length : 0;
+      const offAvg = off.length > 0 ? off.reduce((s, d) => {
         var _a;
         return s + ((_a = d.conditionScore) != null ? _a : 0);
-      }, 0) / off.length;
-      corrs.push({ label, checkedAvg: onAvg, uncheckedAvg: offAvg, diff: onAvg - offAvg });
+      }, 0) / off.length : 0;
+      stats.push({
+        label,
+        diff: on.length > 0 && off.length > 0 ? onAvg - offAvg : 0,
+        checkedAvg: onAvg,
+        uncheckedAvg: offAvg,
+        checkRate: withItem.length > 0 ? on.length / withItem.length : 0,
+        streak,
+        missed,
+        hasEnoughData: on.length >= 2 && off.length >= 2
+      });
     });
-    corrs.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
-    if (corrs.length === 0) {
+    return stats;
+  }
+  renderCorrelations(container, data) {
+    const stats = this.buildItemStats(data).filter((s) => s.hasEnoughData);
+    if (stats.length === 0) {
       container.createEl("p", { text: "\uD56D\uBAA9\uBCC4 \uBE44\uAD50\uC5D0 \uB370\uC774\uD130\uAC00 \uB354 \uD544\uC694\uD574\uC694.", cls: "ct-empty" });
       return;
     }
-    const grid = container.createDiv("ct-corr-grid");
-    corrs.slice(0, 8).forEach((c) => {
-      const card = grid.createDiv(`ct-corr-card ${c.diff >= 0 ? "ct-corr-pos" : "ct-corr-neg"}`);
-      card.createDiv({ cls: "ct-corr-label", text: c.label });
-      card.createDiv({ cls: "ct-corr-diff", text: `${c.diff >= 0 ? "+" : ""}${c.diff.toFixed(1)}` });
-      card.createDiv({ cls: "ct-corr-detail", text: `\uCCB4\uD06C:${c.checkedAvg.toFixed(1)} \uBBF8\uCCB4\uD06C:${c.uncheckedAvg.toFixed(1)}` });
+    container.createEl("h4", { text: "\uD56D\uBAA9\uBCC4 \uCEE8\uB514\uC158 \uC601\uD5A5\uB3C4", cls: "ct-impact-title" });
+    const tiers = [
+      { key: "critical", label: "\uD575\uC2EC \uC2B5\uAD00", sub: "\uC5C6\uC73C\uBA74 \uCEE8\uB514\uC158\uC774 \uD06C\uAC8C \uB5A8\uC5B4\uC838\uC694", items: stats.filter((s) => s.diff >= 1.5) },
+      { key: "good", label: "\uB3C4\uC6C0\uC774 \uB418\uB294 \uC2B5\uAD00", sub: "\uC788\uC744 \uB54C \uB354 \uC88B\uC544\uC694", items: stats.filter((s) => s.diff >= 0.4 && s.diff < 1.5) },
+      { key: "neutral", label: "\uC601\uD5A5 \uB0AE\uC74C", sub: "\uCEE8\uB514\uC158\uACFC \uC5F0\uAD00\uC774 \uC801\uC5B4\uC694", items: stats.filter((s) => Math.abs(s.diff) < 0.4) },
+      { key: "bad", label: "\uD53C\uD558\uBA74 \uC88B\uC740 \uAC83", sub: "\uCCB4\uD06C\uD560\uC218\uB85D \uCEE8\uB514\uC158\uC774 \uB0AE\uC544\uC694", items: stats.filter((s) => s.diff < -0.4) }
+    ];
+    const maxDiff = Math.max(...stats.map((s) => Math.abs(s.diff)), 1);
+    tiers.forEach((tier) => {
+      if (tier.items.length === 0)
+        return;
+      const sec = container.createDiv(`ct-tier ct-tier--${tier.key}`);
+      const hdr = sec.createDiv("ct-tier-hdr");
+      hdr.createEl("span", { text: tier.label, cls: "ct-tier-name" });
+      hdr.createEl("span", { text: tier.sub, cls: "ct-tier-sub" });
+      tier.items.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).forEach((item) => {
+        const row = sec.createDiv("ct-impact-row");
+        const left = row.createDiv("ct-impact-left");
+        left.createEl("span", { text: item.label, cls: "ct-impact-name" });
+        if (item.missed >= 3)
+          left.createEl("span", { text: `${item.missed}\uC77C \uC9F8 \uBBF8\uCCB4\uD06C`, cls: "ct-badge ct-badge--warn" });
+        else if (item.streak >= 3)
+          left.createEl("span", { text: `${item.streak}\uC77C \uC5F0\uC18D`, cls: "ct-badge ct-badge--good" });
+        const right = row.createDiv("ct-impact-right");
+        const barWrap = right.createDiv("ct-impact-bar-track");
+        const bar = barWrap.createDiv(`ct-impact-bar ${item.diff >= 0 ? "ct-impact-bar--pos" : "ct-impact-bar--neg"}`);
+        bar.style.width = `${Math.round(Math.abs(item.diff) / maxDiff * 100)}%`;
+        const meta = right.createDiv("ct-impact-meta");
+        meta.createEl("span", { cls: "ct-impact-diff", text: `${item.diff >= 0 ? "+" : ""}${item.diff.toFixed(1)}\uC810` });
+        meta.createEl("span", { cls: "ct-impact-rate", text: `\uCCB4\uD06C\uC728 ${Math.round(item.checkRate * 100)}%` });
+      });
     });
   }
   renderStatInsights(container, data) {
     if (data.length < 5)
       return;
-    const allLabels = /* @__PURE__ */ new Set();
-    data.forEach((d) => d.checkboxItems.forEach((cb) => allLabels.add(cb.label)));
-    const corrs = [];
-    allLabels.forEach((label) => {
-      const on = data.filter((d) => d.checkboxItems.some((cb) => cb.label === label && cb.checked));
-      const off = data.filter((d) => d.checkboxItems.some((cb) => cb.label === label && !cb.checked));
-      if (on.length < 2 || off.length < 2)
-        return;
-      const onAvg = on.reduce((s, d) => {
-        var _a;
-        return s + ((_a = d.conditionScore) != null ? _a : 0);
-      }, 0) / on.length;
-      const offAvg = off.reduce((s, d) => {
-        var _a;
-        return s + ((_a = d.conditionScore) != null ? _a : 0);
-      }, 0) / off.length;
-      corrs.push({ label, diff: onAvg - offAvg });
-    });
-    corrs.sort((a, b) => b.diff - a.diff);
+    const stats = this.buildItemStats(data).filter((s) => s.hasEnoughData);
     const scores = data.map((d) => {
       var _a;
       return (_a = d.conditionScore) != null ? _a : 0;
@@ -542,41 +578,55 @@ var TrackerView = class extends import_obsidian.ItemView {
     const recentAvg = scores.slice(mid).reduce((s, v) => s + v, 0) / Math.max(scores.length - mid, 1);
     const earlyAvg = scores.slice(0, mid).reduce((s, v) => s + v, 0) / Math.max(mid, 1);
     const trend = recentAvg - earlyAvg;
-    const lines = [];
-    if (corrs.length > 0 && corrs[0].diff > 0.5)
-      lines.push(`"${corrs[0].label}"\uC774 \uAC00\uC7A5 \uD575\uC2EC \uD56D\uBAA9\uC774\uC5D0\uC694. \uCCB4\uD06C \uC2DC \uCEE8\uB514\uC158\uC774 \uD3C9\uADE0 ${corrs[0].diff.toFixed(1)}\uC810 \uB192\uC544\uC694.`);
-    const worst = corrs[corrs.length - 1];
-    if (worst && worst.diff < -0.5)
-      lines.push(`"${worst.label}"\uC774 \uBE60\uC9C4 \uB0A0\uC740 \uCEE8\uB514\uC158\uC774 ${Math.abs(worst.diff).toFixed(1)}\uC810 \uB0AE\uC544\uC694. \uBE60\uD2B8\uB9AC\uC9C0 \uB9C8\uC138\uC694.`);
-    if (Math.abs(trend) > 0.3)
-      lines.push(trend > 0 ? `\uCD5C\uADFC \uCEE8\uB514\uC158\uC774 \uC0C1\uC2B9 \uC911 (+${trend.toFixed(1)}). \uC798 \uD558\uACE0 \uC788\uC5B4\uC694!` : `\uCD5C\uADFC \uCEE8\uB514\uC158\uC774 \uD558\uB77D \uC911 (${trend.toFixed(1)}). \uB8E8\uD2F4\uC744 \uC810\uAC80\uD574\uBD10\uC694.`);
-    const pairs = data.filter((d) => {
-      var _a;
-      return ((_a = d.conditionScore) != null ? _a : 0) > 0;
-    });
-    if (pairs.length >= 4) {
-      const avgChecks = pairs.reduce((s, d) => s + d.checkedCount, 0) / pairs.length;
-      const hi = pairs.filter((d) => d.checkedCount >= avgChecks);
-      const lo = pairs.filter((d) => d.checkedCount < avgChecks);
-      if (hi.length > 0 && lo.length > 0) {
-        const hiAvg = hi.reduce((s, d) => {
-          var _a;
-          return s + ((_a = d.conditionScore) != null ? _a : 0);
-        }, 0) / hi.length;
-        const loAvg = lo.reduce((s, d) => {
-          var _a;
-          return s + ((_a = d.conditionScore) != null ? _a : 0);
-        }, 0) / lo.length;
-        if (hiAvg - loAvg > 0.5)
-          lines.push(`\uCCB4\uD06C\uB97C \uB9CE\uC774 \uD560\uC218\uB85D \uCEE8\uB514\uC158\uC774 \uC88B\uC544\uC694. \uB9CE\uC740 \uB0A0 ${hiAvg.toFixed(1)}\uC810 vs \uC801\uC740 \uB0A0 ${loAvg.toFixed(1)}\uC810.`);
-      }
+    const sorted = [...stats].sort((a, b) => b.diff - a.diff);
+    const lacking = sorted.filter((s) => s.diff > 0.5 && s.missed >= 2);
+    const goingWell = sorted.filter((s) => s.diff > 0.3 && (s.streak >= 3 || s.checkRate > 0.65));
+    const topItem = sorted[0];
+    const wrap = container.createDiv("ct-narrative-wrap");
+    const c1 = wrap.createDiv("ct-narrative-card ct-narrative-card--lack");
+    c1.createDiv({ cls: "ct-narrative-icon", text: "\u{1F534}" });
+    c1.createEl("h4", { cls: "ct-narrative-heading", text: "\uCD5C\uADFC \uBD80\uC871\uD55C \uAC83" });
+    const b1 = c1.createDiv("ct-narrative-body");
+    if (lacking.length === 0 && trend >= -0.3) {
+      b1.createEl("p", { text: "\uD2B9\uBCC4\uD788 \uBE60\uC9C4 \uD56D\uBAA9\uC774 \uC5C6\uC5B4\uC694. \uADE0\uD615 \uC788\uAC8C \uC798 \uC720\uC9C0\uD558\uACE0 \uC788\uC5B4\uC694." });
+    } else {
+      lacking.slice(0, 2).forEach((s) => {
+        b1.createEl("p", { text: `"${s.label}"\uC774 ${s.missed}\uC77C \uC5F0\uC18D \uBE60\uC838\uC788\uC5B4\uC694. \uC5C6\uB294 \uB0A0 \uCEE8\uB514\uC158\uC774 \uD3C9\uADE0 ${s.diff.toFixed(1)}\uC810 \uB0AE\uC544\uC694.` });
+      });
+      if (trend < -0.5)
+        b1.createEl("p", { text: `\uC804\uBC18\uC801\uC73C\uB85C \uCEE8\uB514\uC158\uC774 \uC774\uC804\uBCF4\uB2E4 ${Math.abs(trend).toFixed(1)}\uC810 \uB0AE\uC544\uC84C\uC5B4\uC694.` });
     }
-    if (lines.length === 0)
-      return;
-    const box = container.createDiv("ct-stat-insight-box");
-    box.createEl("h4", { text: "\uD1B5\uACC4 \uC778\uC0AC\uC774\uD2B8", cls: "ct-stat-insight-title" });
-    const ul = box.createEl("ul", { cls: "ct-stat-insight-list" });
-    lines.forEach((l) => ul.createEl("li", { text: l }));
+    const c2 = wrap.createDiv("ct-narrative-card ct-narrative-card--good");
+    c2.createDiv({ cls: "ct-narrative-icon", text: "\u2705" });
+    c2.createEl("h4", { cls: "ct-narrative-heading", text: "\uC798 \uD558\uACE0 \uC788\uB294 \uAC83" });
+    const b2 = c2.createDiv("ct-narrative-body");
+    if (goingWell.length === 0) {
+      b2.createEl("p", { text: "\uC544\uC9C1 \uAFB8\uC900\uD55C \uD56D\uBAA9\uC774 \uB9CE\uC9C0 \uC54A\uC544\uC694. \uB370\uC774\uD130\uAC00 \uB354 \uC313\uC774\uBA74 \uBCF4\uC5EC\uC694." });
+    } else {
+      goingWell.slice(0, 2).forEach((s) => {
+        if (s.streak >= 3)
+          b2.createEl("p", { text: `"${s.label}"\uC744 ${s.streak}\uC77C \uC5F0\uC18D \uCC59\uAE30\uACE0 \uC788\uC5B4\uC694! \uCEE8\uB514\uC158\uC5D0 ${s.diff.toFixed(1)}\uC810 \uAE30\uC5EC\uD574\uC694.` });
+        else
+          b2.createEl("p", { text: `"${s.label}" \uCCB4\uD06C\uC728\uC774 ${Math.round(s.checkRate * 100)}%\uB85C \uAFB8\uC900\uD574\uC694. \uCEE8\uB514\uC158\uC5D0 ${s.diff.toFixed(1)}\uC810 \uC601\uD5A5\uC744 \uC918\uC694.` });
+      });
+      if (trend > 0.5)
+        b2.createEl("p", { text: `\uC804\uBC18\uC801\uC73C\uB85C \uCEE8\uB514\uC158\uC774 \uC774\uC804\uBCF4\uB2E4 ${trend.toFixed(1)}\uC810 \uC62C\uB77C\uAC00\uB294 \uC911\uC774\uC5D0\uC694.` });
+    }
+    const c3 = wrap.createDiv("ct-narrative-card ct-narrative-card--advice");
+    c3.createDiv({ cls: "ct-narrative-icon", text: "\u{1F4A1}" });
+    c3.createEl("h4", { cls: "ct-narrative-heading", text: "\uC774\uB807\uAC8C \uD574\uBCF4\uC138\uC694" });
+    const b3 = c3.createDiv("ct-narrative-body");
+    const advLines = [];
+    if (lacking.length > 0)
+      advLines.push(`\uC624\uB298\uBD80\uD130 "${lacking[0].label}"\uC744 \uB2E4\uC2DC \uCC59\uACA8\uBCF4\uC138\uC694. \uCEE8\uB514\uC158\uC774 \uBE60\uB974\uAC8C \uD68C\uBCF5\uB420 \uC218 \uC788\uC5B4\uC694.`);
+    if (topItem && topItem.diff >= 1)
+      advLines.push(`\uAC00\uC7A5 \uD575\uC2EC\uC740 "${topItem.label}"\uC774\uC5D0\uC694. \uB2E4\uB978 \uAC8C \uD798\uB4E4\uB354\uB77C\uB3C4 \uC774\uAC83\uB9CC\uC740 \uC9C0\uCF1C\uBD10\uC694.`);
+    const lowImpact = stats.filter((s) => Math.abs(s.diff) < 0.3);
+    if (lowImpact.length >= 2)
+      advLines.push(`"${lowImpact.slice(0, 2).map((s) => s.label).join('", "')}"\uC740 \uCEE8\uB514\uC158 \uC601\uD5A5\uC774 \uC791\uC544\uC694. \uC5D0\uB108\uC9C0\uB97C \uD575\uC2EC \uD56D\uBAA9\uC5D0 \uC9D1\uC911\uD574\uBCF4\uB294 \uAC83\uB3C4 \uC88B\uC544\uC694.`);
+    if (advLines.length === 0)
+      advLines.push("\uAE30\uB85D\uC744 \uACC4\uC18D \uC313\uC544\uAC00\uC138\uC694. 2\uC8FC \uC774\uC0C1\uC758 \uB370\uC774\uD130\uAC00 \uBAA8\uC774\uBA74 \uD6E8\uC52C \uAD6C\uCCB4\uC801\uC778 \uC870\uC5B8\uC744 \uB4DC\uB9B4 \uC218 \uC788\uC5B4\uC694.");
+    advLines.forEach((l) => b3.createEl("p", { text: l }));
   }
 };
 var DailyNoteParser = class {
