@@ -1,54 +1,98 @@
 #!/usr/bin/env python3
 """
 Obsidian 데일리노트 자존노트 → 0.나 하루자존 자동 동기화 스크립트
-매일 오전 5시에 전날 자존노트 항목을 0.나 노트의 하루자존 섹션에 추가합니다.
+config.ini 설정을 읽어 실행합니다.
 """
 
+import configparser
 import re
 import sys
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# ─── 설정 (본인 환경에 맞게 수정) ──────────────────────────────
-VAULT_PATH = Path(r"C:\Users\사용자이름\Documents\Obsidian\볼트이름")
-DAILY_NOTES_FOLDER = "Daily"        # 데일리노트 폴더명
-DAILY_NOTE_FORMAT = "%Y-%m-%d"      # 데일리노트 파일명 형식 (YYYY-MM-DD)
-ESTEEM_HEADING = "자존노트"          # 데일리노트 자존노트 헤딩 (## 제외)
-TARGET_NOTE_NAME = "0.나.md"        # 대상 노트 파일명
-TARGET_SECTION = "하루자존"          # 대상 노트 섹션 헤딩 (## 제외)
-# ───────────────────────────────────────────────────────────────
+SCRIPT_DIR = Path(__file__).parent
+LOG_FILE = SCRIPT_DIR / "sync_esteem.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+log = logging.getLogger(__name__)
 
 
-def find_daily_note(date: datetime) -> Path | None:
-    date_str = date.strftime(DAILY_NOTE_FORMAT)
-    candidates = [
-        VAULT_PATH / DAILY_NOTES_FOLDER / f"{date_str}.md",
-        VAULT_PATH / f"{date_str}.md",
+def load_config() -> configparser.ConfigParser:
+    cfg = configparser.ConfigParser()
+    cfg_path = SCRIPT_DIR / "config.ini"
+    if not cfg_path.exists():
+        log.error("config.ini 파일이 없습니다: %s", cfg_path)
+        sys.exit(1)
+    cfg.read(cfg_path, encoding="utf-8")
+    return cfg
+
+
+def find_vault(hint: str) -> Path | None:
+    """볼트 경로를 직접 지정했으면 검증, 없으면 Windows 일반 경로에서 자동 탐색."""
+    if hint:
+        p = Path(hint)
+        if p.exists():
+            return p
+        log.error("config.ini 의 vault_path 경로가 존재하지 않습니다: %s", hint)
+        sys.exit(1)
+
+    # 자동 탐색: .obsidian 폴더를 가진 디렉터리 검색
+    search_roots = [
+        Path.home() / "Documents",
+        Path.home() / "OneDrive" / "Documents",
+        Path.home() / "OneDrive",
+        Path.home(),
     ]
-    for path in candidates:
-        if path.exists():
-            return path
-    # 볼트 전체에서 재귀 검색 (폴더 구조가 다를 경우)
-    for path in VAULT_PATH.rglob(f"{date_str}.md"):
-        return path
+    for root in search_roots:
+        if not root.exists():
+            continue
+        for obsidian_dir in root.rglob(".obsidian"):
+            vault = obsidian_dir.parent
+            log.info("볼트 자동 감지: %s", vault)
+            return vault
+
+    log.error(
+        "옵시디언 볼트를 자동으로 찾지 못했습니다. "
+        "config.ini 의 vault_path 에 경로를 직접 입력해주세요."
+    )
+    sys.exit(1)
+
+
+def find_daily_note(vault: Path, folder: str, fmt: str, date: datetime) -> Path | None:
+    date_str = date.strftime(fmt)
+    candidates = [
+        vault / folder / f"{date_str}.md" if folder else vault / f"{date_str}.md",
+        vault / f"{date_str}.md",
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    for p in vault.rglob(f"{date_str}.md"):
+        return p
     return None
 
 
-def extract_esteem_items(note_path: Path) -> list[str]:
-    """데일리노트에서 자존노트 섹션 항목을 추출합니다."""
+def extract_section_items(note_path: Path, heading: str) -> list[str]:
+    """지정한 헤딩 아래 항목을 추출합니다."""
     text = note_path.read_text(encoding="utf-8")
     in_section = False
     items = []
 
     for line in text.split("\n"):
-        # 자존노트 헤딩 감지 (# 개수 무관)
-        if re.match(rf"^#{1,6}\s+{re.escape(ESTEEM_HEADING)}\s*$", line):
+        if re.match(rf"^#{1,6}\s+{re.escape(heading)}\s*$", line):
             in_section = True
             continue
-        # 다음 헤딩 만나면 섹션 종료
         if in_section and re.match(r"^#{1,6}\s+", line):
             break
-        # 내용 있는 줄 수집
         if in_section and line.strip():
             content = re.sub(r"^[-*]\s+", "", line.strip())
             if content:
@@ -57,69 +101,78 @@ def extract_esteem_items(note_path: Path) -> list[str]:
     return items
 
 
-def find_target_note() -> Path | None:
-    """볼트에서 0.나 노트를 찾습니다."""
-    for path in VAULT_PATH.rglob(TARGET_NOTE_NAME):
+def find_target_note(vault: Path, name: str) -> Path | None:
+    for path in vault.rglob(name):
         return path
     return None
 
 
-def append_to_esteem_section(items: list[str], date: datetime, target_path: Path):
-    """0.나 노트의 하루자존 섹션 맨 위에 날짜별 항목을 추가합니다."""
+def append_to_section(
+    items: list[str], date: datetime, target_path: Path, section: str, date_fmt: str
+):
+    """대상 노트의 섹션 맨 위에 항목을 추가합니다. 중복 날짜는 스킵."""
     text = target_path.read_text(encoding="utf-8")
-    date_str = date.strftime(DAILY_NOTE_FORMAT)
+    date_str = date.strftime(date_fmt)
 
-    # 중복 방지: 해당 날짜가 이미 기록된 경우 스킵
     if date_str in text:
-        print(f"[SKIP] {date_str} 날짜가 이미 0.나 노트에 존재합니다.")
+        log.info("[SKIP] %s 날짜가 이미 기록되어 있습니다.", date_str)
         return
 
-    new_lines = "\n".join(f"- {date_str} - {item}" for item in items)
+    new_block = "\n".join(f"- {date_str} - {item}" for item in items)
 
     lines = text.split("\n")
     insert_idx = None
 
     for i, line in enumerate(lines):
-        if re.match(rf"^#{1,6}\s+{re.escape(TARGET_SECTION)}\s*$", line):
-            # 헤딩 다음 빈 줄 건너뛰고 첫 내용 위치 찾기
+        if re.match(rf"^#{1,6}\s+{re.escape(section)}\s*$", line):
             insert_idx = i + 1
             while insert_idx < len(lines) and lines[insert_idx].strip() == "":
                 insert_idx += 1
             break
 
     if insert_idx is None:
-        # 하루자존 섹션이 없으면 파일 끝에 새로 생성
-        text = text.rstrip() + f"\n\n## {TARGET_SECTION}\n{new_lines}\n"
+        text = text.rstrip() + f"\n\n## {section}\n{new_block}\n"
     else:
-        lines.insert(insert_idx, new_lines)
+        lines.insert(insert_idx, new_block)
         text = "\n".join(lines)
 
     target_path.write_text(text, encoding="utf-8")
-    print(f"[OK] {date_str} 자존노트 {len(items)}개 항목 추가 완료")
+    log.info("[OK] %s 자존노트 %d개 항목 추가 완료", date_str, len(items))
     for item in items:
-        print(f"  - {date_str} - {item}")
+        log.info("  - %s - %s", date_str, item)
 
 
 def main():
+    cfg = load_config()
+    obs = cfg["obsidian"]
+    notes = cfg["notes"]
+
+    vault = find_vault(obs.get("vault_path", "").strip())
+    daily_folder = obs.get("daily_folder", "Daily").strip()
+    daily_fmt = obs.get("daily_format", "%Y-%m-%d").strip()
+    source_heading = notes.get("source_heading", "자존노트").strip()
+    target_name = notes.get("target_note", "0.나.md").strip()
+    target_section = notes.get("target_section", "하루자존").strip()
+
     yesterday = datetime.now() - timedelta(days=1)
-    date_str = yesterday.strftime(DAILY_NOTE_FORMAT)
+    date_str = yesterday.strftime(daily_fmt)
 
-    daily_note = find_daily_note(yesterday)
+    daily_note = find_daily_note(vault, daily_folder, daily_fmt, yesterday)
     if not daily_note:
-        print(f"[WARN] {date_str}.md 데일리노트를 찾을 수 없습니다.")
+        log.warning("%s 데일리노트를 찾을 수 없습니다.", date_str)
         sys.exit(0)
 
-    items = extract_esteem_items(daily_note)
+    items = extract_section_items(daily_note, source_heading)
     if not items:
-        print(f"[INFO] {date_str} 자존노트에 기록된 내용이 없습니다.")
+        log.info("%s 자존노트에 기록된 내용이 없습니다.", date_str)
         sys.exit(0)
 
-    target_path = find_target_note()
+    target_path = find_target_note(vault, target_name)
     if not target_path:
-        print(f"[ERROR] '{TARGET_NOTE_NAME}' 파일을 볼트에서 찾을 수 없습니다.")
+        log.error("'%s' 파일을 볼트에서 찾을 수 없습니다.", target_name)
         sys.exit(1)
 
-    append_to_esteem_section(items, yesterday, target_path)
+    append_to_section(items, yesterday, target_path, target_section, daily_fmt)
 
 
 if __name__ == "__main__":
