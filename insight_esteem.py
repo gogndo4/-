@@ -14,7 +14,8 @@ SCRIPT_DIR = Path(__file__).parent
 
 
 def load_config() -> configparser.ConfigParser:
-    cfg = configparser.ConfigParser()
+    # interpolation=None: 날짜 포맷의 % 기호가 보간 문법으로 해석되는 것을 방지
+    cfg = configparser.ConfigParser(interpolation=None)
     cfg.read(SCRIPT_DIR / "config.ini", encoding="utf-8")
     return cfg
 
@@ -49,7 +50,7 @@ def extract_esteem_entries(target_path: Path, section: str) -> list[tuple[str, l
     date_pattern = re.compile(r"^\d{4}[.\-]\d{2}[.\-]\d{2}$")
 
     for line in text.split("\n"):
-        if re.match(rf"^#{1,6}\s+{re.escape(section)}\s*$", line):
+        if re.match(rf"^#{{1,6}}\s+{re.escape(section)}\s*$", line):
             in_section = True
             continue
         if in_section and re.match(r"^#{1,6}\s+", line):

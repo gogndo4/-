@@ -42,7 +42,7 @@ def parse_entries(target_path: Path, section: str) -> list[tuple[str, list[str]]
     date_pattern = re.compile(r"^\d{4}[.\-]\d{2}[.\-]\d{2}$")
 
     for line in text.split("\n"):
-        if re.match(rf"^#{1,6}\s+{re.escape(section)}\s*$", line):
+        if re.match(rf"^#{{1,6}}\s+{re.escape(section)}\s*$", line):
             in_section = True
             continue
         if in_section and re.match(r"^#{1,6}\s+", line):
