@@ -34,17 +34,18 @@
 2. 이미 발급된 키가 있으면 그 키 복사, 없으면 **Create API key** → 복사
 3. 어딘가(예: 카톡 나에게 보내기)에 보관 — 설치기가 물어볼 때 붙여넣으면 됨
 
-### 2. 디스코드 봇 만들기 (폰에서도 가능, 5분)
+### 2. 디스코드 봇 토큰 준비 (폰에서도 가능, 3분)
 
-1. https://discord.com/developers/applications → **New Application** → 이름: `참모총장`
-2. 왼쪽 메뉴 **Bot** → **Reset Token** → 토큰 복사 → `config.ini`의 `bot_token = ` 에 붙여넣기
-3. 같은 Bot 페이지에서 **MESSAGE CONTENT INTENT** 스위치 켜기 (필수!)
-4. 왼쪽 메뉴 **OAuth2 → URL Generator**:
-   - SCOPES: `bot` 체크
-   - BOT PERMISSIONS: `View Channels`, `Send Messages`, `Read Message History` 체크
-   - 아래 생성된 URL을 브라우저에 붙여넣기 → 내 서버 선택 → 승인
-5. 디스코드 앱: 설정 → 고급 → **개발자 모드** 켜기
-6. 참모총장 채널(폰코딩 채널) 우클릭 → **ID 복사하기** → `config.ini`의 `channel_id = ` 에 붙여넣기
+**기존 '폰코딩' 봇 계정을 그대로 이어받는 것을 권장** (서버 초대·권한이 이미 돼 있음):
+
+1. https://discord.com/developers/applications → 기존 `폰코딩` 앱 선택
+2. 왼쪽 메뉴 **Bot** → **Reset Token** → 새 토큰 복사해서 보관
+   - ⚠️ 토큰을 리셋하면 **예전 폰코딩 봇 프로세스는 그 순간 접속이 끊긴다.** 두 봇이 같은 채널에서 동시에 대답하는 사고를 막아주는 깔끔한 세대교체 방법이지만, 예전 봇의 기능(노트 대필 등)이 아직 필요하면 새 시스템 설치 직전에 리셋할 것. (대필 기능은 새 참모총장에도 있음: `적어줘 ...`)
+3. 같은 Bot 페이지에서 **MESSAGE CONTENT INTENT** 스위치가 켜져 있는지 확인 (필수!)
+
+새 봇 계정으로 따로 만들고 싶다면: New Application → Bot 탭에서 토큰 발급 + MESSAGE CONTENT INTENT 켜기 → OAuth2 → URL Generator에서 SCOPES `bot`, 권한 `View Channels`/`Send Messages`/`Read Message History` 체크 → 생성된 URL로 서버에 초대.
+
+채널 ID는 이미 `config.ini`에 입력돼 있다 (폰코딩 채널). 다른 채널을 쓰려면 개발자 모드 켜고 채널 우클릭 → ID 복사해서 교체.
 
 ### 3. 설치 (PC에서, 3분)
 
@@ -72,6 +73,7 @@
 | 아침 | 도착한 브리핑 읽기 → 채널에서 바로 답장/토의 | 디스코드 |
 | 수시 | 고민·결정·아이디어를 채널에 던지기 → 참모가 내 기록 기반으로 답함 | 디스코드 |
 | 수시 | `기억해 <내용>` → 장기 기억에 저장 | 디스코드 |
+| 수시 | `적어줘 <내용>` → 오늘 데일리노트에 대필 (폰에서 노트 안 열어도 됨) | 디스코드 |
 
 ## 자주 묻는 것
 

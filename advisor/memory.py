@@ -25,6 +25,7 @@ TEMPLATE = """# 참모총장 메모리
 """
 
 REMEMBER_SECTION = "## 대화에서 기억할 것"
+DAILY_MEMO_SECTION = "## 디스코드 메모"
 
 
 def memory_path(vault: Path, cfg) -> Path:
@@ -59,5 +60,31 @@ def remember(vault: Path, cfg, note: str) -> Path:
     else:
         text = f"{text.rstrip()}\n\n{REMEMBER_SECTION}\n\n{line}\n"
 
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def write_daily(vault: Path, cfg, note: str) -> Path:
+    """오늘 데일리노트의 '디스코드 메모' 섹션에 한 줄 대필 (노트가 없으면 생성)."""
+    obs = cfg["obsidian"]
+    folder = obs.get("daily_folder", "Daily").strip()
+    fmt = obs.get("daily_format", "%Y-%m-%d").strip()
+    today = datetime.now()
+
+    path = vaultlib.find_daily_note(vault, folder, fmt, today)
+    if not path:
+        date_str = today.strftime(fmt)
+        parent = vault / folder if folder else vault
+        parent.mkdir(parents=True, exist_ok=True)
+        path = parent / f"{date_str}.md"
+        path.write_text(f"# {date_str}\n", encoding="utf-8")
+
+    text = path.read_text(encoding="utf-8")
+    line = f"- {today.strftime('%H:%M')} {note.strip()}"
+    if DAILY_MEMO_SECTION in text:
+        head, _, tail = text.partition(DAILY_MEMO_SECTION)
+        text = f"{head}{DAILY_MEMO_SECTION}{tail.rstrip()}\n{line}\n"
+    else:
+        text = f"{text.rstrip()}\n\n{DAILY_MEMO_SECTION}\n\n{line}\n"
     path.write_text(text, encoding="utf-8")
     return path

@@ -77,6 +77,15 @@ class AdvisorBot(discord.Client):
                 path = memory.remember(vault, self.cfg, note)
                 return f"✅ 기억했어 — `{path.name}`에 적어뒀어: \"{note}\""
 
+        # "적어줘/메모 ..." → 오늘 데일리노트에 대필
+        for prefix in ("적어줘", "적어", "메모"):
+            if content.startswith(prefix):
+                note = content[len(prefix):].strip(" :,-")
+                if note:
+                    path = memory.write_daily(vault, self.cfg, note)
+                    return f"📝 오늘 데일리노트(`{path.name}`)에 옮겨 적었어: \"{note}\""
+                break
+
         # 볼트 맥락 + 채널 대화 이력으로 응답
         ctx = collect.gather_context(self.cfg, vault)
         ctx["memory"] = memory.read(vault, self.cfg)
