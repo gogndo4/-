@@ -48,18 +48,49 @@ def send(cfg, text: str):
     token, channel_id = credentials(cfg)
     for chunk in _chunks(text):
         payload = json.dumps({"content": chunk}).encode("utf-8")
-        req = urllib.request.Request(
-            API.format(channel_id=channel_id),
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bot {token}",
-            },
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                resp.read()
-        except urllib.error.HTTPError as e:
-            detail = e.read().decode("utf-8", errors="replace")[:300]
-            raise RuntimeError(f"디스코드 발송 실패 {e.code}: {detail}")
+        last_err = None
+        for attempt in range(3):  # 일시적 네트워크 오류 재시도
+            req = urllib.request.Request(
+                API.format(channel_id=channel_id),
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bot {token}",
+                },
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    resp.read()
+                last_err = None
+                break
+            except urllib.error.HTTPError as e:
+                detail = e.read().decode("utf-8", errors="replace")[:300]
+                last_err = RuntimeError(f"디스코드 발송 실패 {e.code}: {detail}")
+                if e.code not in (429, 500, 502, 503):
+                    break
+            except urllib.error.URLError as e:
+                last_err = RuntimeError(f"디스코드 네트워크 오류: {e}")
+            time.sleep(2 * (attempt + 1))
+        if last_err:
+            raise last_err
         time.sleep(0.5)  # 연속 발송 rate limit 여유
+
+
+def fetch_recent(cfg, limit: int = 50) -> list[dict]:
+    """채널의 최근 메시지 (최신순). 기억 추출용 — [{author, is_bot, content, timestamp}]"""
+    token, channel_id = credentials(cfg)
+    req = urllib.request.Request(
+        API.format(channel_id=channel_id) + f"?limit={min(limit, 100)}",
+        headers={"Authorization": f"Bot {token}"},
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        raw = json.load(resp)
+    return [
+        {
+            "author": m.get("author", {}).get("username", "?"),
+            "is_bot": m.get("author", {}).get("bot", False),
+            "content": m.get("content", ""),
+            "timestamp": m.get("timestamp", ""),
+        }
+        for m in raw
+    ]

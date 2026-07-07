@@ -90,6 +90,46 @@ def gap_note(state: dict) -> str:
     return ""
 
 
+DISTILL_SYSTEM = """너는 개인 참모총장의 기록 사서다. 아래 지난 하루의 디스코드 대화에서
+장기적으로 기억할 가치가 있는 사실만 추출하라: 사장님의 결정, 약속, 상태 변화, 새로 드러난 선호나 사정.
+- 한 줄에 하나씩, "- "로 시작해서 최대 3개까지만.
+- 이미 뻔하거나 일회성인 잡담은 제외. 기억할 것이 없으면 정확히 "없음"이라고만 답하라."""
+
+
+def distill_memory(cfg, vault):
+    """지난 24시간 채널 대화에서 기억할 사실을 추출해 장기 기억 노트에 적립."""
+    from datetime import timezone
+
+    msgs = discord_send.fetch_recent(cfg, limit=50)
+    cutoff = datetime.now(timezone.utc).timestamp() - 86400
+    lines = []
+    for m in reversed(msgs):  # 시간순
+        if not m["content"]:
+            continue
+        try:
+            ts = datetime.fromisoformat(m["timestamp"].replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            continue
+        if ts < cutoff:
+            continue
+        speaker = "참모" if m["is_bot"] else "사장님"
+        lines.append(f"{speaker}: {m['content'][:500]}")
+
+    if len(lines) < 4:  # 대화가 거의 없었으면 스킵
+        return 0
+
+    reply = brain.generate(DISTILL_SYSTEM, "\n".join(lines)[-8000:], cfg)
+    added = 0
+    for line in reply.split("\n"):
+        line = line.strip()
+        if line.startswith("- ") and "없음" not in line:
+            memory.remember(vault, cfg, line[2:].strip())
+            added += 1
+        if added >= 3:
+            break
+    return added
+
+
 def build_briefing(cfg, vault, state, dry_run: bool) -> str:
     ctx = collect.gather_context(cfg, vault)
     ctx["memory"] = memory.read(vault, cfg)
@@ -144,6 +184,13 @@ def main():
 
     if not args.dry_run:
         run_sync_scripts()
+        # 지난 하루 대화에서 장기 기억 적립 (실패해도 체크인은 계속)
+        try:
+            n = distill_memory(cfg, vault)
+            if n:
+                log.info("대화에서 기억 %d개 적립", n)
+        except Exception as e:
+            log.warning("기억 적립 실패: %s", e)
 
     try:
         text = build_briefing(cfg, vault, state, args.dry_run)

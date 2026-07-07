@@ -35,7 +35,7 @@ def load_config() -> configparser.ConfigParser:
     if not cfg_path.exists():
         log.error("config.ini 파일이 없습니다: %s", cfg_path)
         sys.exit(1)
-    cfg.read(cfg_path, encoding="utf-8")
+    cfg.read(cfg_path, encoding="utf-8-sig")
     return cfg
 
 

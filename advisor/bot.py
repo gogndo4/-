@@ -91,6 +91,22 @@ class AdvisorBot(discord.Client):
         if content in ("상황", "상태", "미션"):
             return mission.status_text(mission.week_state(vault, self.cfg))
 
+        # "목표" → 목표 노트 원문
+        if content == "목표":
+            return f"🎯 현재 목표 노트 (`목표.md` — 옵시디언에서 수정 가능):\n\n{mission.read_goals(vault, self.cfg)}"
+
+        # "도움말" → 명령 목록
+        if content in ("도움말", "명령어", "help"):
+            return (
+                "🫡 참모총장 명령어:\n"
+                "- `상황` — 이번 주 미션 상태 (출력·연속 주·전역까지 기회)\n"
+                "- `완료 <내용>` — 출력 기록, 미션 즉시 달성 처리\n"
+                "- `적어줘 <내용>` — 오늘 데일리노트에 대필\n"
+                "- `기억해 <내용>` — 장기 기억에 영구 저장\n"
+                "- `목표` — 목표 노트 보기\n"
+                "그 외엔 그냥 편하게 말 걸면 돼, 사장님. 매일 밤 대화는 자동으로 기억에 적립돼."
+            )
+
         # "완료 ..." → 오늘 데일리노트 '출력' 섹션에 기록 (미션 상태 즉시 반영)
         if content.startswith("완료"):
             note = content[len("완료"):].strip(" :,-")

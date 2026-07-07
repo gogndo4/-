@@ -10,7 +10,7 @@ REPO_DIR = Path(__file__).resolve().parent.parent
 
 def load_config() -> configparser.ConfigParser:
     cfg = configparser.ConfigParser(interpolation=None)
-    cfg.read(REPO_DIR / "config.ini", encoding="utf-8")
+    cfg.read(REPO_DIR / "config.ini", encoding="utf-8-sig")
     return cfg
 
 

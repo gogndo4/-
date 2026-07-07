@@ -45,7 +45,13 @@ def memory_path(vault: Path, cfg) -> Path:
 
 
 def read(vault: Path, cfg, max_chars: int = 3000) -> str:
-    return vaultlib.read_note(memory_path(vault, cfg), max_chars=max_chars)
+    """기억 노트 읽기 — 길어지면 앞부분(프로필)과 뒷부분(최신 기억)을 남기고 중간을 접는다."""
+    text = memory_path(vault, cfg).read_text(encoding="utf-8").strip()
+    if len(text) <= max_chars:
+        return text
+    head = text[: max_chars // 3]
+    tail = text[-(max_chars * 2 // 3):]
+    return f"{head}\n...(중간 생략)...\n{tail}"
 
 
 def remember(vault: Path, cfg, note: str) -> Path:

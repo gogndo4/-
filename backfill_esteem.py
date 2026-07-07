@@ -30,7 +30,7 @@ def load_config() -> configparser.ConfigParser:
     # interpolation=None: 날짜 포맷의 % 기호가 보간 문법으로 해석되는 것을 방지
     cfg = configparser.ConfigParser(interpolation=None)
     cfg_path = SCRIPT_DIR / "config.ini"
-    cfg.read(cfg_path, encoding="utf-8")
+    cfg.read(cfg_path, encoding="utf-8-sig")
     return cfg
 
 
