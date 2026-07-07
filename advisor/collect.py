@@ -9,13 +9,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import mission
 import vaultlib
 from dashboard import parse_entries  # 자존노트/출력노트 날짜 블록 파서 재사용
 
 # 자기정보 수집에서 제외할 노트 (자동 생성물)
 EXCLUDE_NOTES = {
     "자존 대시보드.md", "출력 대시보드.md", "브리핑 아카이브.md", "참모총장 메모리.md",
-    "자존노트.md", "출력노트.md",  # 별도 블록으로 이미 포함됨
+    "자존노트.md", "출력노트.md", "목표.md",  # 별도 블록으로 이미 포함됨
 }
 
 
@@ -134,6 +135,8 @@ def gather_context(cfg, vault: Path) -> dict[str, str]:
     gap = record_gap_days(vault, cfg)
 
     return {
+        "goals": mission.read_goals(vault, cfg),
+        "mission": mission.mission_block(vault, cfg),
         "daily_notes": daily_notes_block(vault, cfg),
         "tracker": "\n".join(tracker) if tracker else "(컨디션 트래커 데이터 없음)",
         "esteem": "\n".join(esteem) if esteem else "(자존노트 기록 없음)",

@@ -22,7 +22,13 @@ BOTTLENECK_SUMMARY = """[병목 진단 요약 — 참모의 판단 기준]
 
 
 def context_block(ctx: dict) -> str:
-    return f"""[최근 데일리노트 (오늘 포함 3일)]
+    return f"""[목표 노트 — 주인이 정한 방향, 최우선 판단 기준]
+{ctx['goals']}
+
+[주간 미션 상태 — 시스템이 계산한 현재 상태와 개입 지시]
+{ctx['mission']}
+
+[최근 데일리노트 (오늘 포함 3일)]
 {ctx['daily_notes']}
 
 [컨디션 트래커 (최근 2주)]
@@ -52,7 +58,7 @@ def briefing_system(name: str) -> str:
 1. 인사 한 줄 (오늘 날짜/요일 언급, 매일 다르게)
 2. **어제의 기록에서**: 어제(없으면 최근) 기록에서 눈에 띈 것 2~3가지, 구체적으로 인용
 3. **흐름**: 컨디션·자존·출력 데이터의 추세 해석 (며칠 연속 기록이 비었으면 그 사실을 다정하게 짚기)
-4. **오늘 하나만**: 오늘 집중할 것 딱 1가지 (출력 우선 원칙 반영, 실행 가능한 크기로)
+4. **오늘 하나만**: 오늘 집중할 것 딱 1가지 — 반드시 [주간 미션 상태]의 개입 지시를 따를 것
 5. 마지막에 대화를 이어갈 질문 1개
 
 [형식]
@@ -62,8 +68,16 @@ def briefing_system(name: str) -> str:
 def briefing_user(ctx: dict, gap_note: str) -> str:
     now = datetime.now()
     weekday = "월화수목금토일"[now.weekday()]
+    retro = ""
+    if now.weekday() == 6:  # 일요일 = 주간 회고 모드
+        retro = (
+            "오늘은 일요일이므로 브리핑을 '주간 회고 모드'로 작성하라: "
+            "이번 주 데이터(출력·자존·컨디션)를 결산하고, 다음 주 미션 1개를 제안한 뒤 "
+            "동의하는지 묻는 질문으로 끝내라."
+        )
     return f"""오늘은 {now.strftime('%Y년 %m월 %d일')} ({weekday}요일)이다.
 {gap_note}
+{retro}
 아래 기록을 바탕으로 오늘 아침 브리핑을 작성하라.
 
 {context_block(ctx)}"""

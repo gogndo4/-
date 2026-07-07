@@ -19,6 +19,7 @@ import brain
 import collect
 import discord_send
 import memory
+import mission
 import persona
 import vaultlib
 
@@ -85,6 +86,21 @@ class AdvisorBot(discord.Client):
                     path = memory.write_daily(vault, self.cfg, note)
                     return f"📝 오늘 데일리노트(`{path.name}`)에 옮겨 적었어: \"{note}\""
                 break
+
+        # "상황" → 코드가 계산한 주간 미션 상태 그대로
+        if content in ("상황", "상태", "미션"):
+            return mission.status_text(mission.week_state(vault, self.cfg))
+
+        # "완료 ..." → 오늘 데일리노트 '출력' 섹션에 기록 (미션 상태 즉시 반영)
+        if content.startswith("완료"):
+            note = content[len("완료"):].strip(" :,-")
+            if note:
+                mission.log_output(vault, self.cfg, note)
+                state = mission.week_state(vault, self.cfg)
+                return (
+                    f"🎉 출력 기록 완료: \"{note}\"\n"
+                    f"이번 주 미션 달성! 연속 출력 {state['streak_weeks'] + 1}주째야."
+                )
 
         # 볼트 맥락 + 채널 대화 이력으로 응답
         ctx = collect.gather_context(self.cfg, vault)
