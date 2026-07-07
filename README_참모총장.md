@@ -22,13 +22,19 @@
 
 ## 최초 설정 (한 번만, 약 15분)
 
-### 1. Gemini 무료 API 키 발급 (2분)
+### 0. 이 폴더를 PC에 가져오기
+
+깃허브에서 ZIP 다운로드:
+`https://github.com/gogndo4/-/archive/refs/heads/claude/ai-advisor-system-review-et574u.zip`
+→ 압축 풀어서 원하는 위치에 두기 (기존 폴더가 있다면 통째로 교체 권장 — 예전 코드에는 치명적 버그가 있음)
+
+### 1. Gemini 무료 API 키 준비 (폰에서도 가능, 2분)
 
 1. https://aistudio.google.com/apikey 접속 (구글 계정 로그인)
-2. **Create API key** 클릭 → 키 복사
-3. `config.ini`의 `[gemini]` → `api_key = ` 뒤에 붙여넣기
+2. 이미 발급된 키가 있으면 그 키 복사, 없으면 **Create API key** → 복사
+3. 어딘가(예: 카톡 나에게 보내기)에 보관 — 설치기가 물어볼 때 붙여넣으면 됨
 
-### 2. 디스코드 봇 만들기 (5분)
+### 2. 디스코드 봇 만들기 (폰에서도 가능, 5분)
 
 1. https://discord.com/developers/applications → **New Application** → 이름: `참모총장`
 2. 왼쪽 메뉴 **Bot** → **Reset Token** → 토큰 복사 → `config.ini`의 `bot_token = ` 에 붙여넣기
@@ -40,17 +46,11 @@
 5. 디스코드 앱: 설정 → 고급 → **개발자 모드** 켜기
 6. 참모총장 채널(폰코딩 채널) 우클릭 → **ID 복사하기** → `config.ini`의 `channel_id = ` 에 붙여넣기
 
-### 3. 설치 및 등록 (PC에서, 3분)
+### 3. 설치 (PC에서, 3분)
 
-PowerShell을 열고 이 폴더에서:
+**`install.bat` 더블클릭.** 끝.
 
-```powershell
-pip install -r requirements.txt   # 디스코드 봇 라이브러리
-python advisor\daily_briefing.py --force   # 첫 브리핑 테스트 발송
-.\setup_advisor.ps1               # 자동 실행 등록 (관리자 권한 권장)
-```
-
-디스코드 채널에 브리핑이 도착하면 성공.
+설치기가 순서대로: 키 3개를 물어보고 → 라이브러리 설치 → 자동 실행 등록(매일 08:00 절전 해제 실행 + 로그인 시) → 첫 브리핑을 즉시 테스트 발송한다. 디스코드 채널에 브리핑이 도착하면 성공.
 
 ### 4. 기존 시스템 진단 (선택, 2분)
 
