@@ -54,17 +54,17 @@ Write-Host "[2/4] 라이브러리 설치 (discord.py)" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "[3/4] 자동 실행 등록" -ForegroundColor Cyan
 
-# 브리핑: 매일 08:00 (절전 중이면 깨어나서 실행) + 로그인 시 (같은 날 중복 발송은 자동 스킵)
+# 저녁 체크인: 매일 21:00 (절전 중이면 깨어나서 실행) + 로그인 시 (같은 날 중복 발송은 자동 스킵)
 $BriefingScript = Join-Path $ScriptDir "advisor\daily_briefing.py"
 $Action1 = New-ScheduledTaskAction -Execute $PythonPath -Argument "`"$BriefingScript`"" -WorkingDirectory $ScriptDir
 $Triggers1 = @(
-    (New-ScheduledTaskTrigger -Daily -At "08:00"),
+    (New-ScheduledTaskTrigger -Daily -At "21:00"),
     (New-ScheduledTaskTrigger -AtLogOn)
 )
 $Settings1 = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
-Register-ScheduledTask -TaskName "참모총장브리핑" -Action $Action1 -Trigger $Triggers1 -Settings $Settings1 `
-    -Description "매일 아침 옵시디언 기록 기반 AI 브리핑을 디스코드로 발송" -Force | Out-Null
-Write-Host "  [OK] '참모총장브리핑' — 매일 08:00 (절전 해제 포함) + 로그인 시" -ForegroundColor Green
+Register-ScheduledTask -TaskName "참모총장체크인" -Action $Action1 -Trigger $Triggers1 -Settings $Settings1 `
+    -Description "매일 저녁 옵시디언 기록 기반으로 참모총장이 디스코드에 먼저 말을 걺" -Force | Out-Null
+Write-Host "  [OK] '참모총장체크인' — 매일 21:00 (절전 해제 포함) + 로그인 시" -ForegroundColor Green
 
 # 대화 봇: 로그인 시 상주
 $BotScript = Join-Path $ScriptDir "advisor\bot.py"
@@ -76,9 +76,15 @@ Register-ScheduledTask -TaskName "참모총장봇" -Action $Action2 -Trigger $Tr
     -Description "디스코드 참모총장 대화 봇 (PC 켜져 있는 동안 상주)" -Force | Out-Null
 Write-Host "  [OK] '참모총장봇' — 로그인 시 자동 시작" -ForegroundColor Green
 
-# ── 4. 첫 브리핑 테스트 ──
+# ── 4. 자가진단 + 첫 인사 테스트 ──
 Write-Host ""
-Write-Host "[4/4] 첫 브리핑 테스트 발송" -ForegroundColor Cyan
+Write-Host "[4/4] 자가진단 후 첫 인사 발송" -ForegroundColor Cyan
+& $PythonPath (Join-Path $ScriptDir "advisor\doctor.py")
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "[!] 자가진단에서 문제가 발견됐습니다. 위 항목을 고친 뒤 install.bat 을 다시 실행하세요." -ForegroundColor Yellow
+    Read-Host "Enter 키를 누르면 종료"; exit 1
+}
 & $PythonPath $BriefingScript --force
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""

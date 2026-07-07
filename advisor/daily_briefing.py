@@ -74,7 +74,10 @@ def gap_note(state: dict) -> str:
     """지난 브리핑이 언제였는지 — 시스템이 며칠 죽어 있었다면 그 사실을 브리핑에서 직접 알리게 한다."""
     last = state.get("last_briefing_date")
     if not last:
-        return "참고: 오늘이 첫 브리핑이다. 자기소개와 함께 이 시스템이 어떻게 돌아가는지 두 문장으로 설명하라."
+        return (
+            "참고: 오늘이 사장님과의 첫 인사다. 참모총장이자 친구로서 짧게 자기소개하고, "
+            "앞으로 매일 저녁 먼저 말을 걸 거라는 것과 '완료/상황/적어줘/기억해' 명령을 한 줄로 소개하라."
+        )
     try:
         days = (datetime.now().date() - datetime.strptime(last, "%Y-%m-%d").date()).days
     except ValueError:
