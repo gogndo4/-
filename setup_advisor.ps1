@@ -54,11 +54,12 @@ Write-Host "[2/4] 라이브러리 설치 (discord.py)" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "[3/4] 자동 실행 등록" -ForegroundColor Cyan
 
-# 저녁 체크인: 매일 21:00 (절전 중이면 깨어나서 실행) + 로그인 시 (같은 날 중복 발송은 자동 스킵)
+# 저녁 체크인: 매일 20:30 (절전 중이면 깨어나서 실행) + 로그인 시 (같은 날 중복 발송은 자동 스킵)
+# 20:30 = 저녁점호(20:00) 직후, 개인정비 시간 시작
 $BriefingScript = Join-Path $ScriptDir "advisor\daily_briefing.py"
 $Action1 = New-ScheduledTaskAction -Execute $PythonPath -Argument "`"$BriefingScript`"" -WorkingDirectory $ScriptDir
 $Triggers1 = @(
-    (New-ScheduledTaskTrigger -Daily -At "21:00"),
+    (New-ScheduledTaskTrigger -Daily -At "20:30"),
     (New-ScheduledTaskTrigger -AtLogOn)
 )
 $Settings1 = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
