@@ -50,11 +50,34 @@
 
 채널 ID는 이미 `config.ini`에 입력돼 있다 (폰코딩 채널). 다른 채널을 쓰려면 개발자 모드 켜고 채널 우클릭 → ID 복사해서 교체.
 
-### 3. 설치 (PC에서, 3분)
+### 3. 설치
 
-**`install.bat` 더블클릭.** 끝.
+**직접 PC 앞에 있다면 — `install.bat` 더블클릭.** 끝.
 
 설치기가 순서대로: 키 3개를 물어보고 → 라이브러리 설치 → 자동 실행 등록(매일 08:00 절전 해제 실행 + 로그인 시) → 첫 브리핑을 즉시 테스트 발송한다. 디스코드 채널에 브리핑이 도착하면 성공.
+
+**PC 앞에 없고, 노트북에 연결된 다른 Claude(예: 원격 디스패치 채널)가 있다면 —**
+그 채널에 아래 내용을 그대로 보내면 원격으로 설치된다:
+
+```
+GitHub 저장소 gogndo4/- 의 claude/ai-advisor-system-review-et574u 브랜치를
+내 컴퓨터에 받아줘 (이미 이 저장소의 폴더가 있다면 그 폴더에서 git pull, 없으면 새로 clone).
+받은 뒤 그 폴더에서 아래를 실행해줘:
+
+1. 이 세 값을 영구 환경변수로 등록 (setx, 그리고 현재 세션에도 $env: 로 즉시 반영):
+   GEMINI_API_KEY = <여기에 Gemini 키>
+   DISCORD_BOT_TOKEN = <여기에 디스코드 봇 토큰>
+   DISCORD_CHANNEL_ID = 1440010115414495386
+2. pip install -r requirements.txt
+3. python advisor\doctor.py 실행해서 결과 보여줘
+4. 통과하면 powershell -ExecutionPolicy Bypass -File setup_advisor.ps1 실행
+   (환경변수가 있으니 키를 다시 묻지 않고 자동 진행됨)
+5. 마지막으로 python advisor\check_no_secrets.py 실행해서 결과 보여줘 —
+   반드시 "노출된 비밀키 없음"이 나와야 함. 그리고 이 작업 중에는 git add나
+   git commit, git push를 절대 하지 마 (config.ini에 비밀키가 들어가면 안 됨).
+```
+
+⚠️ 위 방식은 config.ini가 아니라 **환경변수**로 키를 넘긴다 — 저장소는 깃에 커밋되므로, 절대 config.ini 파일에 직접 키를 적어넣지 않도록 할 것. `check_no_secrets.py`가 그 실수를 마지막에 한 번 더 잡아준다.
 
 ### 4. 기존 시스템 진단 (선택, 2분)
 

@@ -25,9 +25,15 @@ Write-Host "Python: $PythonPath"
 # ── 1. 키 입력 → config.ini 저장 ──
 $cfg = Get-Content $ConfigPath -Raw -Encoding UTF8
 
-function Fill-ConfigValue([string]$content, [string]$key, [string]$prompt) {
+function Fill-ConfigValue([string]$content, [string]$key, [string]$prompt, [string]$envVar) {
     if ($content -match "(?m)^$key\s*=\s*\S") {
         Write-Host "  $key : 이미 설정됨 (건너뜀)" -ForegroundColor DarkGray
+        return $content
+    }
+    # 환경변수로 이미 지정돼 있으면(원격 디스패치 등) config.ini 에는 쓰지 않고 그대로 둔다 —
+    # 코드가 env var 를 우선 읽으므로 동작에는 지장 없고, 깃에 비밀키가 올라갈 위험이 없다.
+    if ($envVar -and (Get-Item "Env:$envVar" -ErrorAction SilentlyContinue)) {
+        Write-Host "  $key : 환경변수 $envVar 사용 (config.ini 에는 기록 안 함)" -ForegroundColor DarkGray
         return $content
     }
     $value = Read-Host "  $prompt"
@@ -40,9 +46,9 @@ function Fill-ConfigValue([string]$content, [string]$key, [string]$prompt) {
 
 Write-Host ""
 Write-Host "[1/4] 키 설정" -ForegroundColor Cyan
-$cfg = Fill-ConfigValue $cfg "api_key"    "Gemini API 키 붙여넣기 (aistudio.google.com/apikey)"
-$cfg = Fill-ConfigValue $cfg "bot_token"  "디스코드 봇 토큰 붙여넣기 (discord.com/developers)"
-$cfg = Fill-ConfigValue $cfg "channel_id" "디스코드 채널 ID 붙여넣기 (채널 우클릭 > ID 복사)"
+$cfg = Fill-ConfigValue $cfg "api_key"    "Gemini API 키 붙여넣기 (aistudio.google.com/apikey)" "GEMINI_API_KEY"
+$cfg = Fill-ConfigValue $cfg "bot_token"  "디스코드 봇 토큰 붙여넣기 (discord.com/developers)" "DISCORD_BOT_TOKEN"
+$cfg = Fill-ConfigValue $cfg "channel_id" "디스코드 채널 ID 붙여넣기 (채널 우클릭 > ID 복사)" "DISCORD_CHANNEL_ID"
 Set-Content -Path $ConfigPath -Value $cfg -Encoding UTF8 -NoNewline
 
 # ── 2. 라이브러리 설치 ──
