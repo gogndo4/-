@@ -15,6 +15,9 @@ sys.path.insert(0, str(SCRIPT_DIR.parent))
 
 import discord
 
+import re
+
+import blog
 import brain
 import collect
 import discord_send
@@ -91,6 +94,36 @@ class AdvisorBot(discord.Client):
         if content in ("상황", "상태", "미션"):
             return mission.status_text(mission.week_state(vault, self.cfg))
 
+        # ── 블로그 파이프라인 ──
+        # "주제/글감" → 오늘의 글감 5개 (아침 자동 발송과 동일, 수동 재요청)
+        if content in ("주제", "글감"):
+            return blog.suggest_topics(self.cfg, vault)
+
+        # "N번 [+ 추가 재료]" → 오늘 제안된 주제로 초안 작성
+        m = re.match(r"^(\d+)\s*번(.*)$", content, re.S)
+        if m and blog.todays_topics():
+            topic = blog.topic_by_number(int(m.group(1)))
+            if topic:
+                draft = blog.write_draft(self.cfg, vault, topic, extra=m.group(2))
+                path = blog.save_draft(vault, self.cfg, draft)
+                return (
+                    f"{draft}\n\n---\n📄 옵시디언 `{path.parent.name}/{path.name}` 에도 저장해뒀어. "
+                    "고칠 부분 말해주면 바로 수정할게, 사장님. 발행하면 `완료 블로그 - 제목`!"
+                )
+            return f"오늘 글감은 {len(blog.todays_topics())}개야, 사장님. 그 범위에서 번호를 골라줘!"
+
+        # "글써줘 <주제/원고>" → 새 주제나 사장님 원고 기반 초안
+        if content.startswith("글써줘"):
+            material = content[len("글써줘"):].strip(" :,-")
+            if material:
+                draft = blog.write_draft(self.cfg, vault, material.split("\n")[0][:80], extra=material)
+                path = blog.save_draft(vault, self.cfg, draft)
+                return (
+                    f"{draft}\n\n---\n📄 옵시디언 `{path.parent.name}/{path.name}` 에도 저장해뒀어. "
+                    "다듬을 부분 알려줘, 사장님!"
+                )
+            return "어떤 주제로 쓸까, 사장님? `글써줘` 뒤에 주제나 원고를 붙여줘."
+
         # "목표" → 목표 노트 원문
         if content == "목표":
             return f"🎯 현재 목표 노트 (`목표.md` — 옵시디언에서 수정 가능):\n\n{mission.read_goals(vault, self.cfg)}"
@@ -104,6 +137,9 @@ class AdvisorBot(discord.Client):
                 "- `적어줘 <내용>` — 오늘 데일리노트에 대필\n"
                 "- `기억해 <내용>` — 장기 기억에 영구 저장\n"
                 "- `목표` — 목표 노트 보기\n"
+                "- `주제` — 내 기록에서 나온 오늘의 블로그 글감 5개 (매일 아침 8시 자동)\n"
+                "- `N번 [+재료]` — 글감 선택 → 내 문체로 초안 작성\n"
+                "- `글써줘 <주제/원고>` — 새 주제로 초안 작성\n"
                 "그 외엔 그냥 편하게 말 걸면 돼, 사장님. 매일 밤 대화는 자동으로 기억에 적립돼."
             )
 

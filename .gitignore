@@ -3,3 +3,4 @@ __pycache__/
 *.log
 insight_prompt.txt
 advisor/advisor_state.json
+advisor/blog_state.json

@@ -66,6 +66,18 @@ Register-ScheduledTask -TaskName "참모총장체크인" -Action $Action1 -Trigg
     -Description "매일 저녁 옵시디언 기록 기반으로 참모총장이 디스코드에 먼저 말을 걺" -Force | Out-Null
 Write-Host "  [OK] '참모총장체크인' — 매일 21:00 (절전 해제 포함) + 로그인 시" -ForegroundColor Green
 
+# 아침 글감: 매일 08:00 (절전 중이면 깨어나서 실행) + 로그인 시 (같은 날 중복 발송은 자동 스킵)
+$TopicsScript = Join-Path $ScriptDir "advisor\blog_topics.py"
+$Action3 = New-ScheduledTaskAction -Execute $PythonPath -Argument "`"$TopicsScript`"" -WorkingDirectory $ScriptDir
+$Triggers3 = @(
+    (New-ScheduledTaskTrigger -Daily -At "08:00"),
+    (New-ScheduledTaskTrigger -AtLogOn)
+)
+$Settings3 = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+Register-ScheduledTask -TaskName "참모총장글감" -Action $Action3 -Trigger $Triggers3 -Settings $Settings3 `
+    -Description "매일 아침 옵시디언 기록에서 나온 블로그 글감 5개를 디스코드로 발송" -Force | Out-Null
+Write-Host "  [OK] '참모총장글감' — 매일 08:00 글감 5개 (절전 해제 포함)" -ForegroundColor Green
+
 # 대화 봇: 로그인 시 상주
 $BotScript = Join-Path $ScriptDir "advisor\bot.py"
 $Action2 = New-ScheduledTaskAction -Execute $PythonwPath -Argument "`"$BotScript`"" -WorkingDirectory $ScriptDir
