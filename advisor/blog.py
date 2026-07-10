@@ -93,6 +93,75 @@ def style_examples(vault: Path, cfg, n: int = 2, each_chars: int = 1800) -> str:
     return "\n\n".join(parts) if parts else "(백업 글 없음)"
 
 
+def _backup_files(vault: Path, cfg, n: int) -> list[Path]:
+    folder = find_backup_folder(vault, cfg)
+    if not folder:
+        return []
+    return sorted(folder.glob("*.md"), key=lambda f: f.stat().st_mtime, reverse=True)[:n]
+
+
+def style_profile(vault: Path, cfg, sample: int = 10) -> str:
+    """백업 글들의 '형태'를 수치로 분석 — 분량·줄 길이·호흡을 초안에 강제하기 위한 프로파일."""
+    files = _backup_files(vault, cfg, sample)
+    if not files:
+        return ""
+
+    total_chars, line_chars, block_lines, one_sentence_lines = [], [], [], 0
+    nonempty_total = 0
+    for f in files:
+        try:
+            text = f.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        body = re.sub(r"^#\s.*\n?", "", text)  # 제목 제외
+        total_chars.append(len(body))
+        block = 0
+        for line in body.split("\n"):
+            s = line.strip()
+            if not s:
+                if block:
+                    block_lines.append(block)
+                block = 0
+                continue
+            block += 1
+            nonempty_total += 1
+            line_chars.append(len(s))
+            # 문장 종결부호만 센다 (뒤에 공백/끝이 오는 경우 — "0.1%" 소수점 제외)
+            if len(re.findall(r"[.?!](?=\s|$)", s)) <= 1:
+                one_sentence_lines += 1
+        if block:
+            block_lines.append(block)
+
+    if not total_chars or not line_chars:
+        return ""
+
+    avg = lambda xs: round(sum(xs) / len(xs))
+    avg_total = avg(total_chars)
+    avg_line = avg(line_chars)
+    avg_block = avg(block_lines) if block_lines else 1
+    one_ratio = round(one_sentence_lines / nonempty_total * 100) if nonempty_total else 0
+
+    return f"""[형태 프로파일 — 실제 글 {len(total_chars)}편 분석, 반드시 이 수치에 맞출 것]
+- 전체 분량: 약 {avg_total}자 (본문 기준, ±20% 이내)
+- 한 줄 길이: 평균 {avg_line}자 — 이보다 길게 늘어지는 줄 금지
+- 줄의 {one_ratio}%가 한 문장 이하 — 한 줄에 한 호흡, 문장이 길면 중간에서 끊어 줄바꿈
+- 문단(빈 줄 사이 덩어리): 평균 {avg_block}줄 — 그 이상 뭉치지 말고 빈 줄로 호흡을 줄 것
+- 줄바꿈과 빈 줄의 패턴은 아래 예시 글의 생김새를 눈으로 그대로 베낄 것"""
+
+
+def target_length(vault: Path, cfg) -> int:
+    """백업 평균 본문 분량 (없으면 1000자)."""
+    files = _backup_files(vault, cfg, 10)
+    lengths = []
+    for f in files:
+        try:
+            body = re.sub(r"^#\s.*\n?", "", f.read_text(encoding="utf-8").strip())
+            lengths.append(len(body))
+        except OSError:
+            continue
+    return round(sum(lengths) / len(lengths)) if lengths else 1000
+
+
 def insight_notes(vault: Path, cfg, max_notes: int = 12, total_chars: int = 5000) -> str:
     """사장님이 정리해둔 생각·인사이트 노트 — 글감의 1순위 원천.
     config [blog] insight_folders (쉼표 구분) 지정 시 그 폴더들, 비어있으면 자동 탐색."""
@@ -223,31 +292,55 @@ def suggest_topics(cfg, vault: Path) -> str:
 
 # ── 2단계: 초안 작성 ──
 
-DRAFT_SYSTEM = """너는 사장님의 블로그 초벌 작가다. 아래 문체 예시를 최대한 그대로 흉내내서 블로그 초안을 쓴다.
+DRAFT_SYSTEM = """너는 사장님의 블로그 초벌 작가다. 목표는 "사장님이 쓴 글"과 구분이 안 되는 초안이다.
+문체(목소리)만이 아니라 글의 형태 — 분량, 줄 길이, 줄을 끊는 위치, 빈 줄 호흡 — 까지 복제한다.
 
 {style_rules}
+
+{style_profile}
 
 규칙:
 - 사장님의 실제 기록과 제공된 재료에 있는 경험만 쓴다. 없는 일화를 지어내지 않는다.
 - 재료가 부족한 부분은 [여기에 사장님 경험 추가] 표시를 남긴다 — 채우는 건 사장님 몫.
-- 분량 800~1500자. 첫 줄은 "# 제목".
-- 초안일 뿐이다. 사장님이 고칠 것을 전제로, 뼈대와 흐름을 충실하게."""
+- 첫 줄은 "# 제목". 본문에는 마크다운 서식(굵게, 목록, 소제목) 금지 — 예시 글에 없는 장식은 쓰지 않는다.
+- 쓰고 나서 스스로 검사하라: 예시 글과 나란히 놓았을 때 생김새(줄 길이, 문단 크기)가 같은가?"""
 
 
 def write_draft(cfg, vault: Path, topic: str, extra: str = "") -> str:
-    system = DRAFT_SYSTEM.format(style_rules=STYLE_RULES)
+    profile = style_profile(vault, cfg) or "[형태 프로파일 없음 — 예시 글의 생김새를 그대로 따를 것]"
+    system = DRAFT_SYSTEM.format(style_rules=STYLE_RULES, style_profile=profile)
     extra_block = f"\n\n[사장님이 직접 준 재료/원고 — 최우선으로 반영]\n{extra}" if extra.strip() else ""
     user = f"""오늘의 주제: {topic}{extra_block}
 
-[사장님 블로그 문체 예시 — 이 목소리 그대로]
-{style_examples(vault, cfg)}
+[사장님 블로그 문체 예시 — 목소리와 생김새 모두 이대로]
+{style_examples(vault, cfg, n=3, each_chars=2500)}
 
 [정리된 생각·인사이트 노트 — 사용할 수 있는 사장님의 생각]
 {insight_notes(vault, cfg)}
 
 [최근 기록 — 사용할 수 있는 실제 경험]
 {insights_digest(vault, cfg)}"""
-    return brain.generate(system, user, cfg)
+
+    draft = brain.generate(system, user, cfg)
+
+    # 형태 검증: 분량이 사장님 평균에서 ±40% 넘게 벗어나면 한 번 재구성
+    target = target_length(vault, cfg)
+    body_len = len(re.sub(r"^#\s.*\n?", "", draft.strip()))
+    if target and not (target * 0.6 <= body_len <= target * 1.4):
+        draft = brain.generate(
+            system,
+            f"""아래 초안의 내용과 문체는 유지하되, 본문 분량을 약 {target}자에 맞추고
+줄 길이·줄바꿈·빈 줄 호흡을 [형태 프로파일]과 예시 글의 생김새에 정확히 맞춰 재구성하라.
+첫 줄은 "# 제목" 유지.
+
+[초안]
+{draft}
+
+[사장님 블로그 문체 예시]
+{style_examples(vault, cfg, n=2, each_chars=2000)}""",
+            cfg,
+        )
+    return draft
 
 
 def save_draft(vault: Path, cfg, draft: str) -> Path:
