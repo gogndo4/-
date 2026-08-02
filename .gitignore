@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.log
+insight_prompt.txt
+advisor/advisor_state.json
+advisor/blog_state.json

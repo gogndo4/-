@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>20일 글쓰기 · 공현준</title>
+<meta name="description" content="평일 20일 동안 매일 하나의 질문에 답합니다. 끝나면, 당신을 읽어낸 책 한 권이 남습니다.">
+<meta name="theme-color" content="#E8EAE6">
+<meta property="og:type" content="website">
+<meta property="og:title" content="하고 싶은 게 없는 게 아니라, 있었는데 잊은 겁니다.">
+<meta property="og:description" content="평일 20일 동안 매일 하나의 질문에 답합니다. 끝나면, 당신을 읽어낸 책 한 권이 남습니다.">
+<meta property="og:locale" content="ko_KR">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23E8EAE6'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%2345604F'/%3E%3C/svg%3E">
+
+<!-- 본문은 기본적으로 '보이는 상태'다.
+     스크롤 페이드는 JS가 실제로 돌 때만 켠다.
+     (JS가 막힌 뷰어에서 페이지가 비어 보이는 사고를 막는다) -->
+<script>document.documentElement.className+=" js";</script>
+
+<style>
+/* ───────────────────────────────────────────────
+   웹폰트를 쓰지 않는다. 기기 기본 한글 폰트가
+   모바일에서 가장 빠르고 가장 잘 읽힌다.
+   서체 역할 분리는 굵기·크기·자간·행간으로 한다.
+   색은 3개: 배경 / 본문 / 강조.
+   ─────────────────────────────────────────────── */
+:root{
+  --bg:#E8EAE6;
+  --ink:#232722;
+  --accent:#45604F;
+  --muted:#5C6159;
+  --line:rgba(35,39,34,.14);
+  --sans:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR","Malgun Gothic",system-ui,sans-serif;
+  --measure:33rem;
+  --gap:clamp(4.5rem,13vw,7.5rem);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:1.0625rem;      /* 17px — 모바일에서 한 줄 20~25자 */
+  font-weight:400;
+  line-height:1.9;
+  letter-spacing:.005em;
+  word-break:keep-all;      /* 한글 어절 단위 줄바꿈 */
+  overflow-wrap:break-word;
+}
+@media (min-width:48rem){ body{font-size:1.125rem} }
+
+/* 레이아웃 ─ 한 화면에 한 덩어리 */
+.wrap{
+  width:100%;
+  max-width:var(--measure);
+  margin-inline:auto;
+  padding-inline:clamp(1.5rem,6vw,2rem);
+}
+section{padding-block:var(--gap)}
+section + section{border-top:1px solid var(--line)}
+
+/* 타이포 역할 */
+h1,h2,h3{
+  font-weight:700;
+  line-height:1.5;
+  letter-spacing:-.022em;
+  margin:0;
+}
+h1{font-size:clamp(1.6rem,7.2vw,2.35rem);line-height:1.42}
+h2{font-size:clamp(1.22rem,4.6vw,1.5rem)}
+h3{font-size:1.0625rem;font-weight:600;letter-spacing:-.015em}
+p{margin:0 0 1.45em}
+p:last-child{margin-bottom:0}
+strong{font-weight:700}
+.lead{font-size:1.09em;color:var(--ink)}
+.muted{color:var(--muted)}
+.small{font-size:.875rem;line-height:1.75;color:var(--muted);letter-spacing:0}
+
+.label{
+  display:block;
+  font-size:.75rem;
+  font-weight:600;
+  letter-spacing:.19em;
+  color:var(--accent);
+  margin:0 0 1.1rem;
+}
+
+/* HERO */
+.hero{padding-top:clamp(4rem,16vw,7rem);padding-bottom:var(--gap)}
+.hero h1{margin-bottom:1.5rem}
+.hero .sub{color:var(--ink);margin-bottom:2rem}
+.hero .meta{font-size:.8125rem;color:var(--muted);letter-spacing:.02em;margin-bottom:2.25rem}
+
+.cta{
+  display:inline-block;
+  background:var(--accent);
+  color:var(--bg);
+  text-decoration:none;
+  font-size:1rem;
+  font-weight:600;
+  letter-spacing:-.01em;
+  padding:.95rem 1.6rem;
+  border-radius:2px;
+  transition:opacity .2s ease;
+}
+.cta:hover{opacity:.86}
+
+/* 시그니처 — 20일, 질문이 하나씩 도착한다 */
+.days{
+  display:flex;
+  gap:.5rem;
+  flex-wrap:wrap;
+  margin-top:3.25rem;
+  align-items:center;
+}
+.days .dot{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--accent);
+  opacity:0;
+  transform:translateY(-3px);
+  animation:arrive .5s ease forwards;
+}
+.days .note{
+  font-size:.75rem;color:var(--muted);letter-spacing:.02em;
+  margin-left:.55rem;opacity:0;animation:arrive .5s ease forwards;animation-delay:1.5s;
+}
+@keyframes arrive{to{opacity:1;transform:none}}
+
+/* 본문 블록 */
+.block{margin-top:2.5rem}
+.block:first-of-type{margin-top:2.25rem}
+.block h3{margin-bottom:.55rem}
+.step{margin-top:2.75rem}
+.step:first-of-type{margin-top:2.25rem}
+.step .n{
+  display:block;font-size:.75rem;font-weight:600;
+  letter-spacing:.16em;color:var(--accent);margin-bottom:.5rem;
+}
+.step h3{margin-bottom:.6rem}
+
+.keep{
+  margin-top:2.5rem;padding-top:1.6rem;border-top:1px solid var(--line);
+}
+.keep:first-of-type{border-top:0;padding-top:0}
+.keep h3{margin-bottom:.5rem}
+.keep ul{margin:.6rem 0 0;padding-left:1.05em}
+.keep li{margin-bottom:.35em}
+
+/* 후기 */
+blockquote{
+  margin:0 0 2.1rem;
+  padding-left:1.05rem;
+  border-left:2px solid var(--line);
+}
+blockquote p{margin-bottom:.5rem}
+blockquote cite{
+  display:block;font-size:.75rem;font-style:normal;
+  color:var(--muted);letter-spacing:.02em;
+}
+
+/* 이런 분께 */
+.fit{margin-top:2.4rem}
+.fit:first-of-type{margin-top:2.25rem}
+.fit h3{margin-bottom:.5rem;color:var(--accent)}
+
+/* 폼 */
+form{margin-top:2.5rem}
+.field{margin-bottom:1.75rem}
+label{
+  display:block;font-size:.9375rem;font-weight:600;
+  letter-spacing:-.01em;margin-bottom:.5rem;
+}
+label .req{font-weight:400;color:var(--muted);font-size:.8125rem;margin-left:.35rem}
+input,textarea{
+  width:100%;
+  font:inherit;
+  font-size:1rem;
+  color:var(--ink);
+  background:transparent;
+  border:0;
+  border-bottom:1px solid rgba(35,39,34,.3);
+  border-radius:0;
+  padding:.6rem 0;
+  transition:border-color .2s ease;
+}
+textarea{resize:vertical;min-height:3.4rem;line-height:1.75}
+input:focus,textarea:focus{outline:none;border-bottom-color:var(--accent)}
+input:focus-visible,textarea:focus-visible,
+button:focus-visible,a:focus-visible,summary:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:3px;
+}
+.hint{font-size:.8125rem;color:var(--muted);margin-top:.6rem;line-height:1.7}
+button.cta{border:0;cursor:pointer;font-family:inherit}
+.formnote{margin-top:1.5rem}
+.done{
+  display:none;
+  margin-top:2.5rem;padding:1.5rem;
+  border:1px solid var(--accent);
+  border-radius:2px;
+  line-height:1.8;
+}
+.done.on{display:block}
+.err{display:none;margin-top:1rem;font-size:.875rem;color:#8A3A3A}
+.err.on{display:block}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+
+/* FAQ */
+details{border-bottom:1px solid var(--line);padding:1.15rem 0}
+details:first-of-type{border-top:1px solid var(--line)}
+summary{
+  list-style:none;cursor:pointer;
+  font-weight:600;font-size:1rem;letter-spacing:-.012em;
+  line-height:1.6;
+  display:flex;justify-content:space-between;gap:1rem;align-items:baseline;
+}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";color:var(--accent);font-weight:400;flex:none}
+details[open] summary::after{content:"−"}
+details p{margin:.9rem 0 .2rem;color:var(--muted)}
+
+footer{padding-block:3.5rem 4.5rem;border-top:1px solid var(--line)}
+footer p{font-size:.875rem;color:var(--muted);line-height:1.9}
+
+/* 스크롤 진입 페이드 — 딱 이 정도까지만.
+   .js 가 붙었을 때만(=스크립트가 실제로 실행됐을 때만) 숨긴다. */
+.js .rise{opacity:0;transform:translateY(10px);transition:opacity .7s ease,transform .7s ease}
+.js .rise.in{opacity:1;transform:none}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms !important;animation-delay:0s !important;transition-duration:.001ms !important}
+  .days .dot,.days .note{opacity:1;transform:none}
+  .rise{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<main>
+
+  <!-- ① HERO -->
+  <header class="hero">
+    <div class="wrap">
+      <h1>하고 싶은 게 없는 게 아니라,<br>있었는데 잊은 겁니다.</h1>
+      <p class="sub lead">평일 20일 동안 매일 하나의 질문에 답합니다.<br>끝나면, 당신을 읽어낸 책 한 권이 남습니다.</p>
+      <p class="meta">2026년 1기 · 정원 3명 · 아직 열지 않았습니다</p>
+      <a class="cta" href="#apply">1기 열리면 알려주세요</a>
+
+      <!-- 20일. 질문이 하루에 하나씩 도착한다. -->
+      <div class="days" aria-hidden="true">
+        <span class="dot" style="animation-delay:.35s"></span><span class="dot" style="animation-delay:.41s"></span>
+        <span class="dot" style="animation-delay:.47s"></span><span class="dot" style="animation-delay:.53s"></span>
+        <span class="dot" style="animation-delay:.59s"></span><span class="dot" style="animation-delay:.65s"></span>
+        <span class="dot" style="animation-delay:.71s"></span><span class="dot" style="animation-delay:.77s"></span>
+        <span class="dot" style="animation-delay:.83s"></span><span class="dot" style="animation-delay:.89s"></span>
+        <span class="dot" style="animation-delay:.95s"></span><span class="dot" style="animation-delay:1.01s"></span>
+        <span class="dot" style="animation-delay:1.07s"></span><span class="dot" style="animation-delay:1.13s"></span>
+        <span class="dot" style="animation-delay:1.19s"></span><span class="dot" style="animation-delay:1.25s"></span>
+        <span class="dot" style="animation-delay:1.31s"></span><span class="dot" style="animation-delay:1.37s"></span>
+        <span class="dot" style="animation-delay:1.43s"></span><span class="dot" style="animation-delay:1.49s"></span>
+        <span class="note">스무 번의 질문</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ② 문제 인식 -->
+  <section class="rise">
+    <div class="wrap">
+      <h2>정보가 없어서가 아닙니다</h2>
+      <div class="block">
+        <p>MBTI도 알고, 적성검사도 해봤고, 강점 진단도 받아봤습니다.<br>결과지에 적힌 말은 다 맞는 것 같은데, 그게 나랑 무슨 상관인지는 모르겠습니다.</p>
+        <p>자기소개서 첫 칸에서 커서만 깜빡입니다.<br>쓸 말이 없어서가 아니라, 어떤 나를 써야 할지 모르겠어서요.</p>
+        <p>남들은 다 아는 것 같은데 나만 모르는 것 같고,<br>그렇다고 하루 날 잡고 나를 들여다보자니 어디서부터 봐야 할지 모르겠습니다.</p>
+        <p><strong>당신이 게으른 게 아닙니다.</strong><br>나에 대한 답은 원래 혼자서는 잘 안 나옵니다.<br>질문이 없으면 생각은 시작되지 않으니까요.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ③ 이건 이렇게 진행됩니다 -->
+  <section class="rise">
+    <div class="wrap">
+      <h2>이건 이렇게 진행됩니다</h2>
+
+      <div class="step">
+        <span class="n">1단계</span>
+        <h3>매일 아침, 질문 하나</h3>
+        <p>평일 아침마다 질문을 하나 보냅니다.<br>무슨 질문이 올지는 미리 알려드리지 않습니다. 미리 준비한 답은 내 답이 아니거든요.<br>답은 그날 안에 씁니다. 길이 제한은 없고, 세 줄만 써도 됩니다.</p>
+      </div>
+
+      <div class="step">
+        <span class="n">2단계</span>
+        <h3>쓴 글은 내 페이지에, 인증은 단톡방에</h3>
+        <p>답은 각자 개인 페이지에 씁니다. 다른 사람에게 보이지 않습니다.<br>단톡방에는 “오늘 썼습니다”만 남기면 됩니다.<br>내용을 공개하고 싶으면 공개하고, 감추고 싶으면 감추셔도 됩니다. 매일 고르시면 됩니다.</p>
+      </div>
+
+      <div class="step">
+        <span class="n">3단계</span>
+        <h3>매주 한 번, 편지 한 통</h3>
+        <p>일주일에 한 번, 그 주에 쓴 글을 전부 읽고 편지를 씁니다.<br>세 명이라서 할 수 있는 일입니다.<br>잘 썼다는 말은 하지 않습니다. 당신이 무엇을 반복해서 쓰고 있는지, 어디서 말을 아꼈는지를 적습니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ④ 20일 뒤에 남는 것 -->
+  <section class="rise">
+    <div class="wrap">
+      <span class="label">20일 뒤에 남는 것</span>
+      <h2>20일 중 16일 이상 쓰신 분께<br>책 한 세트를 만들어 보내드립니다</h2>
+
+      <div class="keep" style="margin-top:2.75rem">
+        <h3>① 내가 쓴 글 20편</h3>
+        <p>맞춤법과 문장을 다듬어 한 권으로 묶습니다. 내용은 손대지 않습니다. 읽기 편하게만 만듭니다.</p>
+      </div>
+
+      <div class="keep">
+        <h3>② 받은 편지 4통</h3>
+        <p>매주 받은 편지를 그대로 함께 묶습니다. 내 글과 그 글을 읽은 사람의 말이 나란히 남습니다.</p>
+      </div>
+
+      <div class="keep">
+        <h3>③ 나 사용설명서</h3>
+        <p>20일치를 전부 다시 읽고 쓰는 글입니다.</p>
+        <ul>
+          <li>반복해서 나온 단어 다섯 개</li>
+          <li>길게 쓴 날과 짧게 쓴 날</li>
+          <li>매번 비껴간 이야기</li>
+          <li>본인은 별거 아니라고 넘긴 것 중 강점이라 부를 만한 것</li>
+          <li>다음 3개월에 해볼 것 하나</li>
+        </ul>
+      </div>
+
+      <p class="small" style="margin-top:2.5rem">1기는 PDF로 보내드립니다. 종이책 제작은 2기부터입니다.</p>
+    </div>
+  </section>
+
+  <!-- ⑤ 만든 사람 -->
+  <section class="rise">
+    <div class="wrap">
+      <span class="label">만든 사람</span>
+      <div class="block" style="margin-top:0">
+        <p>스물한 살, 공현준입니다.</p>
+        <p>3개월 전까지 저도 위에 적은 사람이었습니다.<br>하고 싶은 게 없는 줄 알았는데, 아니었습니다. 스무 살 겨울에 있었던 걸 잊고 있었을 뿐이었습니다.</p>
+        <p>그걸 알아낸 방법이 글이었습니다.<br>300권을 읽고 128편을 쓰는 동안 알게 된 건 하나입니다.<br><strong>나에 대한 답은 생각해서 나오는 게 아니라, 쓰다가 튀어나옵니다.</strong></p>
+        <p>자격증은 없습니다. 대신 이 길을 3개월 전에 지나왔습니다.<br>그래서 어디가 막히는 자리인지 압니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ⑥ 먼저 해본 사람들의 말 -->
+  <section class="rise">
+    <div class="wrap">
+      <h2>먼저 해본 사람들의 말</h2>
+      <div class="block">
+        <blockquote>
+          <p>“손글씨 쓰는 걸 좋아하지만, 어떤 걸 써야할지 잘 모르겠고, 또 혼자서는 꾸준히 끌고 나가는 힘이 없어서 금방 작심삼일로 끝나는 걸 알기에 더욱 시작하지 않았던 게 필사입니다.”</p>
+          <cite>이전 모임 참가자</cite>
+        </blockquote>
+        <blockquote>
+          <p>“머릿속에 둥둥 떠다니는 정리안된 감정들을 글로써 종이에 옮겨 담으며 굉장히 차분해지는 시간이었습니다.”</p>
+          <cite>이전 모임 참가자</cite>
+        </blockquote>
+        <blockquote>
+          <p>“이런 환경에 던져진 상황이 되니 책임감이 생기고, 또 서로의 생각을 글로 나눈다는 점도 좋았어요.”</p>
+          <cite>이전 모임 참가자</cite>
+        </blockquote>
+        <blockquote>
+          <p>“글씨 쓰는 건 좋아하지만 글을 쓰는건 아직 어렵거든요. 이제 조금 시작해도 괜찮을 것 같은 조그만 용기가 생겼습니다.”</p>
+          <cite>이전 모임 참가자</cite>
+        </blockquote>
+        <blockquote style="margin-bottom:0">
+          <p>“덕분에 ‘보는 눈’과 ‘생각하는 힘’이 한 뼘 더 자랐습니다.”</p>
+          <cite>이전 모임 참가자</cite>
+        </blockquote>
+      </div>
+    </div>
+  </section>
+
+  <!-- ⑦ 이런 분께 권합니다 -->
+  <section class="rise">
+    <div class="wrap">
+      <h2>이런 분께 권합니다</h2>
+
+      <div class="fit">
+        <h3>뭘 좋아하는지 모르겠는 분</h3>
+        <p>좋아하는 게 없는 사람은 없습니다. 다만 그게 뭐였는지 물어본 적이 없을 뿐입니다. 20일 동안 대신 물어드립니다.</p>
+      </div>
+      <div class="fit">
+        <h3>하고 싶은 게 없는 게 아니라, 있었는데 잊은 분</h3>
+        <p>어릴 때 시간 가는 줄 모르고 했던 게 분명 있습니다. 그게 뭐였는지 기억나지 않는다면, 기억을 꺼내는 질문부터 시작합니다.</p>
+      </div>
+      <div class="fit">
+        <h3>혼자 시작하면 3일 만에 그만두는 분</h3>
+        <p>의지가 약한 게 아니라 혼자였던 겁니다. 매일 질문이 오고, 쓴 걸 확인해주는 사람이 있으면 20일은 갑니다.</p>
+      </div>
+      <div class="fit">
+        <h3>자기소개서 앞에서 매번 막히는 분</h3>
+        <p>20일치 글이 쌓이면 쓸 말이 없어서 막히는 일은 없어집니다. 골라 쓰기만 하면 됩니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ⑧ 신청 -->
+  <section id="apply" class="rise">
+    <div class="wrap">
+      <h2>1기는 아직 열지 않았습니다</h2>
+      <div class="block">
+        <p>정원이 세 명이라 아무 때나 열지 못합니다.<br>연락처를 남겨주시면 1기가 열릴 때 가장 먼저 알려드립니다.<br>지금은 아무것도 결제하지 않습니다.</p>
+      </div>
+
+      <!-- ⚠️ 배포 전: action 의 YOUR_FORM_ID 를 실제 Formspree 폼 ID 로 바꿀 것.
+           (또는 구글 폼 사용 시 docs/README_배포.md 참고) -->
+      <form id="notifyForm" action="https://formspree.io/f/YOUR_FORM_ID" method="POST">
+        <div class="field">
+          <label for="name">이름 (또는 불릴 이름) <span class="req">필수</span></label>
+          <input id="name" name="name" type="text" required autocomplete="name" enterkeyhint="next">
+        </div>
+
+        <div class="field">
+          <label for="contact">연락받을 곳 <span class="req">필수</span></label>
+          <input id="contact" name="contact" type="text" required placeholder="카카오톡 ID 또는 이메일" enterkeyhint="next">
+        </div>
+
+        <div class="field">
+          <label for="struggle">요즘 제일 답답한 것 한 줄 <span class="req">선택</span></label>
+          <textarea id="struggle" name="struggle" rows="2" enterkeyhint="done"></textarea>
+          <p class="hint">안 쓰셔도 됩니다. 쓰시면 질문을 만들 때 참고합니다.</p>
+        </div>
+
+        <!-- 스팸 봇용 함정. 사람에겐 보이지 않는다. -->
+        <div class="hp" aria-hidden="true">
+          <label for="website">website</label>
+          <input id="website" name="_gotcha" type="text" tabindex="-1" autocomplete="off">
+        </div>
+
+        <button class="cta" type="submit">알림 신청하기</button>
+        <p class="err" id="formErr">전송에 실패했습니다. 잠시 후 다시 시도해 주세요.</p>
+      </form>
+
+      <div class="done" id="formDone" role="status" aria-live="polite">
+        남겨주셔서 고맙습니다. 1기가 열리면 남겨주신 곳으로 연락드리겠습니다.
+      </div>
+    </div>
+  </section>
+
+  <!-- ⑨ 자주 묻는 질문 -->
+  <section class="rise">
+    <div class="wrap">
+      <h2>자주 묻는 질문</h2>
+      <div class="block">
+        <details>
+          <summary>글을 잘 못 쓰는데 괜찮을까요?</summary>
+          <p>괜찮습니다. 잘 쓰는 게 목적이 아니라 알아내는 게 목적입니다. 세 줄만 써도 됩니다. 맞춤법은 마지막에 제가 고칩니다.</p>
+        </details>
+        <details>
+          <summary>하루 얼마나 걸리나요?</summary>
+          <p>10분에서 20분 사이입니다. 오래 붙잡고 있으면 오히려 답이 꾸며집니다.</p>
+        </details>
+        <details>
+          <summary>빠지면 어떻게 되나요?</summary>
+          <p>빠져도 됩니다. 다만 지난 질문은 다시 열어드리지 않습니다. 밀린 걸 따라잡아야 한다는 부담이 생기면 대부분 그만두게 되기 때문입니다. 20일 중 16일이면 완주입니다.</p>
+        </details>
+        <details>
+          <summary>쓴 글이 다른 사람에게 보이나요?</summary>
+          <p>기본은 비공개입니다. 각자 개인 페이지에 쓰고, 단톡방에는 썼다는 사실만 남깁니다. 공개하고 싶은 날만 공개하시면 됩니다.</p>
+        </details>
+        <details>
+          <summary>정원이 왜 세 명인가요?</summary>
+          <p>매주 한 명 한 명의 글을 전부 읽고 편지를 쓰기 때문입니다. 인원이 늘면 그게 안 됩니다.</p>
+        </details>
+        <details>
+          <summary>질문이 뭔지 미리 알 수 있나요?</summary>
+          <p>알려드리지 않습니다. 미리 생각해둔 답은 대개 남에게 보여주려고 만든 답입니다.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ⑩ 푸터 -->
+<footer>
+  <div class="wrap">
+    <p>20일 글쓰기 · 공현준<br>문의: (연락처)</p>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+
+  /* 스크롤 진입 페이드. 어떤 이유로든 관찰이 안 되면 전부 보이게 되돌린다.
+     이 페이지에서 글이 안 보이는 상황은 어떤 경우에도 있어선 안 된다. */
+  var risers = Array.prototype.slice.call(document.querySelectorAll(".rise"));
+  function revealAll(){ risers.forEach(function(el){ el.classList.add("in"); }); }
+
+  try{
+    if("IntersectionObserver" in window){
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(e){
+          if(e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target); }
+        });
+      },{rootMargin:"0px 0px -12% 0px",threshold:.05});
+      risers.forEach(function(el){ io.observe(el); });
+      /* 안전망: 2.5초 안에 아무것도 안 켜졌으면 관찰이 실패한 것으로 보고 전부 표시 */
+      setTimeout(function(){
+        if(!document.querySelector(".rise.in")) revealAll();
+      },2500);
+    }else{
+      revealAll();
+    }
+  }catch(e){ revealAll(); }
+
+  /* 폼 제출 — 페이지 이동 없이 완료 메시지로 바꾼다.
+     JS가 죽어도 기본 POST 동작으로 제출은 살아 있다. */
+  var form = document.getElementById("notifyForm");
+  var done = document.getElementById("formDone");
+  var err  = document.getElementById("formErr");
+  if(!form) return;
+
+  if(form.action.indexOf("YOUR_FORM_ID") !== -1){
+    console.warn("[20일 글쓰기] 폼 엔드포인트가 아직 placeholder 입니다. index.html 의 action 을 실제 Formspree 폼 ID 로 바꾸세요.");
+  }
+
+  form.addEventListener("submit", function(ev){
+    if(!window.fetch) return;              /* 구형 브라우저는 기본 동작에 맡긴다 */
+    ev.preventDefault();
+    err.classList.remove("on");
+
+    var btn = form.querySelector("button[type=submit]");
+    var original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "보내는 중…";
+
+    fetch(form.action,{
+      method:"POST",
+      body:new FormData(form),
+      headers:{Accept:"application/json"}
+    }).then(function(res){
+      if(!res.ok) throw new Error("bad response");
+      form.style.display = "none";
+      done.classList.add("on");
+      done.setAttribute("tabindex","-1");
+      done.focus({preventScroll:true});
+      done.scrollIntoView({block:"center",behavior:"smooth"});
+    }).catch(function(){
+      err.classList.add("on");
+      btn.disabled = false;
+      btn.textContent = original;
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

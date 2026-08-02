@@ -28,12 +28,13 @@ log = logging.getLogger(__name__)
 
 
 def load_config() -> configparser.ConfigParser:
-    cfg = configparser.ConfigParser()
+    # interpolation=None: 날짜 포맷의 % 기호가 보간 문법으로 해석되는 것을 방지
+    cfg = configparser.ConfigParser(interpolation=None)
     cfg_path = SCRIPT_DIR / "config.ini"
     if not cfg_path.exists():
         log.error("config.ini 파일이 없습니다: %s", cfg_path)
         sys.exit(1)
-    cfg.read(cfg_path, encoding="utf-8")
+    cfg.read(cfg_path, encoding="utf-8-sig")
     return cfg
 
 
@@ -89,7 +90,7 @@ def extract_section_items(note_path: Path, heading: str) -> list[str]:
     items = []
 
     for line in text.split("\n"):
-        if re.match(rf"^#{1,6}\s+{re.escape(heading)}\s*$", line):
+        if re.match(rf"^#{{1,6}}\s+{re.escape(heading)}\s*$", line):
             in_section = True
             continue
         if in_section and re.match(r"^#{1,6}\s+", line):
@@ -133,7 +134,7 @@ def append_to_section(
     insert_idx = None
 
     for i, line in enumerate(lines):
-        if re.match(rf"^#{1,6}\s+{re.escape(section)}\s*$", line):
+        if re.match(rf"^#{{1,6}}\s+{re.escape(section)}\s*$", line):
             section_start = i
         elif section_start is not None and re.match(r"^#{1,6}\s+", line):
             insert_idx = i
