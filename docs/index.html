@@ -12,6 +12,11 @@
 <meta property="og:locale" content="ko_KR">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23E8EAE6'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%2345604F'/%3E%3C/svg%3E">
 
+<!-- 본문은 기본적으로 '보이는 상태'다.
+     스크롤 페이드는 JS가 실제로 돌 때만 켠다.
+     (JS가 막힌 뷰어에서 페이지가 비어 보이는 사고를 막는다) -->
+<script>document.documentElement.className+=" js";</script>
+
 <style>
 /* ───────────────────────────────────────────────
    웹폰트를 쓰지 않는다. 기기 기본 한글 폰트가
@@ -219,9 +224,10 @@ details p{margin:.9rem 0 .2rem;color:var(--muted)}
 footer{padding-block:3.5rem 4.5rem;border-top:1px solid var(--line)}
 footer p{font-size:.875rem;color:var(--muted);line-height:1.9}
 
-/* 스크롤 진입 페이드 — 딱 이 정도까지만 */
-.rise{opacity:0;transform:translateY(10px);transition:opacity .7s ease,transform .7s ease}
-.rise.in{opacity:1;transform:none}
+/* 스크롤 진입 페이드 — 딱 이 정도까지만.
+   .js 가 붙었을 때만(=스크립트가 실제로 실행됐을 때만) 숨긴다. */
+.js .rise{opacity:0;transform:translateY(10px);transition:opacity .7s ease,transform .7s ease}
+.js .rise.in{opacity:1;transform:none}
 
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.001ms !important;animation-delay:0s !important;transition-duration:.001ms !important}
@@ -484,18 +490,27 @@ footer p{font-size:.875rem;color:var(--muted);line-height:1.9}
 (function(){
   "use strict";
 
-  /* 스크롤 진입 페이드. 관찰 불가 환경이면 그냥 다 보이게 둔다. */
-  var risers = document.querySelectorAll(".rise");
-  if("IntersectionObserver" in window){
-    var io = new IntersectionObserver(function(entries){
-      entries.forEach(function(e){
-        if(e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target); }
-      });
-    },{rootMargin:"0px 0px -12% 0px",threshold:.05});
-    risers.forEach(function(el){ io.observe(el); });
-  }else{
-    risers.forEach(function(el){ el.classList.add("in"); });
-  }
+  /* 스크롤 진입 페이드. 어떤 이유로든 관찰이 안 되면 전부 보이게 되돌린다.
+     이 페이지에서 글이 안 보이는 상황은 어떤 경우에도 있어선 안 된다. */
+  var risers = Array.prototype.slice.call(document.querySelectorAll(".rise"));
+  function revealAll(){ risers.forEach(function(el){ el.classList.add("in"); }); }
+
+  try{
+    if("IntersectionObserver" in window){
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(e){
+          if(e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target); }
+        });
+      },{rootMargin:"0px 0px -12% 0px",threshold:.05});
+      risers.forEach(function(el){ io.observe(el); });
+      /* 안전망: 2.5초 안에 아무것도 안 켜졌으면 관찰이 실패한 것으로 보고 전부 표시 */
+      setTimeout(function(){
+        if(!document.querySelector(".rise.in")) revealAll();
+      },2500);
+    }else{
+      revealAll();
+    }
+  }catch(e){ revealAll(); }
 
   /* 폼 제출 — 페이지 이동 없이 완료 메시지로 바꾼다.
      JS가 죽어도 기본 POST 동작으로 제출은 살아 있다. */
